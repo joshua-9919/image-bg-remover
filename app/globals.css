@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 250, 250, 250;
+  --background-end-rgb: 255, 255, 255;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+  min-height: 100vh;
+}
+
+/* 拖拽上传区域样式 */
+.upload-area {
+  @apply border-2 border-dashed border-gray-300 rounded-xl p-12 text-center transition-all duration-200;
+  @apply hover:border-purple-500 hover:bg-purple-50 cursor-pointer;
+}
+
+.upload-area.drag-active {
+  @apply border-purple-500 bg-purple-100;
+}
+
+/* 按钮样式 */
+.btn-primary {
+  @apply bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-3 px-8 rounded-lg;
+  @apply hover:from-purple-700 hover:to-pink-700 transition-all duration-200 shadow-lg hover:shadow-xl;
+}
+
+.btn-secondary {
+  @apply bg-gray-200 text-gray-700 font-semibold py-3 px-6 rounded-lg;
+  @apply hover:bg-gray-300 transition-all duration-200;
+}
+
+/* 加载动画 */
+.spinner {
+  @apply w-12 h-12 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin;
+}
+
+/* 对比滑块容器 */
+.compare-container {
+  @apply relative overflow-hidden rounded-xl;
+}
