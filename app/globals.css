@@ -48,4 +48,14 @@ body {
 /* 对比滑块容器 */
 .compare-container {
   @apply relative overflow-hidden rounded-xl;
+  touch-action: none; /* 防止移动端滚动冲突 */
+}
+
+/* 滑块手柄动画 */
+.compare-container .w-1 {
+  transition: background-color 0.2s;
+}
+
+.compare-container:hover .w-1 {
+  @apply bg-purple-500;
 }

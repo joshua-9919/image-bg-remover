@@ -9,7 +9,9 @@ export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('');
+  const [comparePosition, setComparePosition] = useState(50); // 对比滑块位置
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const compareContainerRef = useRef<HTMLDivElement>(null);
 
   // 处理文件选择
   const handleFileSelect = useCallback((file: File) => {
@@ -34,6 +36,7 @@ export default function Home() {
     reader.onload = (e) => {
       setOriginalImage(e.target?.result as string);
       setProcessedImage(null);
+      setComparePosition(50);
     };
     reader.readAsDataURL(file);
   }, []);
@@ -114,15 +117,37 @@ export default function Home() {
     setProcessedImage(null);
     setError(null);
     setFileName('');
+    setComparePosition(50);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
+  // 处理对比滑块拖动
+  const handleCompareDrag = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    if (!compareContainerRef.current) return;
+
+    const rect = compareContainerRef.current.getBoundingClientRect();
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const position = ((clientX - rect.left) / rect.width) * 100;
+    setComparePosition(Math.max(0, Math.min(100, position)));
+  }, []);
+
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleMouseDown = () => setIsDragging(true);
+  const handleMouseUp = () => setIsDragging(false);
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (isDragging) handleCompareDrag(e);
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (isDragging) handleCompareDrag(e);
+  };
+
   return (
     <main className="min-h-screen p-4 md:p-8">
       {/* 头部 */}
-      <header className="max-w-4xl mx-auto mb-8">
+      <header className="max-w-6xl mx-auto mb-8">
         <h1 className="text-4xl font-bold text-center mb-2 bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
           🎨 Image BG Remover
         </h1>
@@ -132,7 +157,7 @@ export default function Home() {
       </header>
 
       {/* 主要内容 */}
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         {/* 上传区域 */}
         {!originalImage && (
           <div
@@ -169,33 +194,46 @@ export default function Home() {
         {originalImage && (
           <div className="space-y-6">
             {/* 图片展示 */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* 原图 */}
-              <div className="bg-white rounded-xl shadow-lg p-4">
-                <h3 className="text-lg font-semibold mb-3 text-gray-700">原图</h3>
-                <div className="relative aspect-square rounded-lg overflow-hidden bg-gray-100">
-                  <Image
-                    src={originalImage}
-                    alt="Original"
-                    fill
-                    className="object-contain"
-                  />
-                </div>
+            <div className="bg-white rounded-xl shadow-lg p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-700">
+                  {processedImage ? '对比预览' : '原图预览'}
+                </h3>
+                {processedImage && (
+                  <span className="text-sm text-gray-500">
+                    拖动滑块查看对比
+                  </span>
+                )}
               </div>
 
-              {/* 处理后 */}
-              <div className="bg-white rounded-xl shadow-lg p-4">
-                <h3 className="text-lg font-semibold mb-3 text-gray-700">
-                  {isProcessing ? '处理中...' : '处理后'}
-                </h3>
-                <div className="relative aspect-square rounded-lg overflow-hidden bg-gray-100">
-                  {isProcessing ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center">
-                      <div className="spinner mb-4"></div>
-                      <p className="text-gray-600">正在智能抠图...</p>
-                    </div>
-                  ) : processedImage ? (
-                    <>
+              {/* 对比视图容器 */}
+              <div
+                ref={compareContainerRef}
+                className="compare-container relative aspect-video rounded-lg overflow-hidden bg-gray-100 cursor-ew-resize select-none"
+                onMouseMove={handleMouseMove}
+                onTouchMove={handleTouchMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={handleMouseUp}
+                onTouchEnd={handleMouseUp}
+              >
+                {/* 原图（底层） */}
+                <Image
+                  src={originalImage}
+                  alt="Original"
+                  fill
+                  className="object-contain"
+                  draggable={false}
+                />
+
+                {/* 处理后图片（上层，带裁剪） */}
+                {processedImage && (
+                  <>
+                    <div
+                      className="absolute inset-0 overflow-hidden"
+                      style={{
+                        clipPath: `polygon(0 0, ${comparePosition}% 0, ${comparePosition}% 100%, 0 100%)`,
+                      }}
+                    >
                       {/* 棋盘格背景表示透明 */}
                       <div 
                         className="absolute inset-0"
@@ -208,14 +246,43 @@ export default function Home() {
                         alt="Processed"
                         fill
                         className="object-contain relative z-10"
+                        draggable={false}
                       />
-                    </>
-                  ) : (
-                    <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-                      点击"移除背景"开始处理
                     </div>
-                  )}
-                </div>
+
+                    {/* 对比滑块 */}
+                    <div
+                      className="absolute top-0 bottom-0 w-1 bg-white shadow-lg cursor-ew-resize z-20"
+                      style={{ left: `${comparePosition}%` }}
+                      onMouseDown={handleMouseDown}
+                      onTouchStart={handleMouseDown}
+                    >
+                      {/* 滑块手柄 */}
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center">
+                        <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* 标签 */}
+                    <div className="absolute top-4 left-4 bg-black/70 text-white px-3 py-1 rounded-full text-sm z-10">
+                      处理后
+                    </div>
+                    <div className="absolute top-4 right-4 bg-black/70 text-white px-3 py-1 rounded-full text-sm z-10">
+                      原图
+                    </div>
+                  </>
+                )}
+
+                {/* 处理中遮罩 */}
+                {isProcessing && (
+                  <div className="absolute inset-0 bg-white/80 flex flex-col items-center justify-center z-30">
+                    <div className="spinner mb-4"></div>
+                    <p className="text-gray-600 font-medium">正在智能抠图...</p>
+                    <p className="text-gray-500 text-sm mt-2">通常需要 3-5 秒</p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -253,6 +320,13 @@ export default function Home() {
                 </button>
               )}
             </div>
+
+            {/* 图片信息 */}
+            {processedImage && (
+              <div className="bg-gray-50 rounded-lg p-4 text-center text-sm text-gray-600">
+                <p>✅ 处理完成！图片已准备好下载</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -276,10 +350,47 @@ export default function Home() {
             </div>
           </div>
         )}
+
+        {/* 使用指南 */}
+        {!originalImage && (
+          <div className="mt-12 bg-white rounded-xl shadow-md p-6">
+            <h2 className="text-xl font-bold mb-4 text-gray-800">📖 使用指南</h2>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">1</div>
+                <div>
+                  <h4 className="font-semibold text-gray-700">上传图片</h4>
+                  <p className="text-sm text-gray-500">拖拽或点击选择</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">2</div>
+                <div>
+                  <h4 className="font-semibold text-gray-700">移除背景</h4>
+                  <p className="text-sm text-gray-500">点击处理按钮</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">3</div>
+                <div>
+                  <h4 className="font-semibold text-gray-700">查看对比</h4>
+                  <p className="text-sm text-gray-500">拖动滑块对比</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center font-bold flex-shrink-0">4</div>
+                <div>
+                  <h4 className="font-semibold text-gray-700">下载结果</h4>
+                  <p className="text-sm text-gray-500">保存透明 PNG</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 页脚 */}
-      <footer className="max-w-4xl mx-auto mt-16 text-center text-gray-500 text-sm">
+      <footer className="max-w-6xl mx-auto mt-16 text-center text-gray-500 text-sm">
         <p>© 2026 Image BG Remover · Powered by Remove.bg</p>
       </footer>
     </main>
