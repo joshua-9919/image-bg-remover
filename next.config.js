@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Cloudflare Pages 需要输出为静态文件
-  output: 'export',
+  // OpenNext Cloudflare 需要 standalone 输出模式
+  output: 'standalone',
   
   // 禁用图像优化（Cloudflare Pages 不支持）
   images: {
