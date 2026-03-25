@@ -1,9 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // 启用静态导出（适合 Cloudflare Pages）
+  // Cloudflare Pages 需要输出为静态文件
   output: 'export',
   
-  // 禁用图像优化（使用 CDN）
+  // 禁用图像优化（Cloudflare Pages 不支持）
   images: {
     unoptimized: true,
   },
@@ -17,6 +17,10 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  
+  // Next.js 15 配置
+  // 禁用服务器端功能（Cloudflare Pages 静态部署）
+  serverExternalPackages: [],
 }
 
 module.exports = nextConfig
