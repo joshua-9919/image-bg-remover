@@ -17,10 +17,6 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  
-  // Next.js 15 配置
-  // 禁用服务器端功能（Cloudflare Pages 静态部署）
-  serverExternalPackages: [],
 }
 
 module.exports = nextConfig
