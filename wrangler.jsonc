@@ -24,5 +24,11 @@
   },
   "vars": {
     "REMOVE_BG_API_KEY": "PcjUokjmmGsEkmTfwwDSMqNh"
-  }
+  },
+  "routes": [
+    {
+      "pattern": "image-bg-remove.shop",
+      "zone_name": "image-bg-remove.shop"
+    }
+  ]
 }
