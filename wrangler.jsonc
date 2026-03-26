@@ -21,5 +21,8 @@
   },
   "observability": {
     "enabled": true
+  },
+  "vars": {
+    "REMOVE_BG_API_KEY": "PcjUokjmmGsEkmTfwwDSMqNh"
   }
 }
