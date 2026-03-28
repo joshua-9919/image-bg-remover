@@ -5,20 +5,12 @@
   "compatibility_flags": ["nodejs_compat"],
   "main": ".open-next/worker.js",
   "assets": {
-    "directory": ".open-next/assets",
-    "binding": "ASSETS"
+    "directory": ".open-next/assets"
   },
   "observability": {
     "enabled": true
   },
   "vars": {
     "REMOVE_BG_API_KEY": "PcjUokjmmGsEkmTfwwDSMqNh"
-  },
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "image-bg-remover-db",
-      "database_id": "your-database-id-here"
-    }
-  ]
+  }
 }
