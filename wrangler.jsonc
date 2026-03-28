@@ -5,12 +5,7 @@
   "compatibility_flags": ["nodejs_compat"],
   "main": ".open-next/worker.js",
   "assets": {
-    "directory": ".open-next/assets"
-  },
-  "observability": {
-    "enabled": true
-  },
-  "vars": {
-    "REMOVE_BG_API_KEY": "PcjUokjmmGsEkmTfwwDSMqNh"
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
   }
 }
