@@ -20,5 +20,6 @@
       "database_name": "image-bg-remover-db",
       "database_id": "your-database-id-here"
     }
-  ]
+  ],
+  "pages_build_output_dir": ".open-next"
 }
