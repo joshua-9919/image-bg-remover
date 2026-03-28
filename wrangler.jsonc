@@ -1,0 +1,24 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "image-bg-remover",
+  "compatibility_date": "2026-03-17",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": ".open-next/worker.js",
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "vars": {
+    "REMOVE_BG_API_KEY": "PcjUokjmmGsEkmTfwwDSMqNh"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "image-bg-remover-db",
+      "database_id": "your-database-id-here"
+    }
+  ]
+}
