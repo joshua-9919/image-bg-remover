@@ -2,9 +2,14 @@
 import { defineCloudflareConfig } from "@opennextjs/cloudflare";
 
 export default defineCloudflareConfig({
-  // Cloudflare Pages 配置
+  // 使用 Cloudflare Pages 适配器
   override: {
     wrapper: "cloudflare-pages",
     converter: "cloudflare-pages",
+  },
+  
+  // 配置输出目录
+  build: {
+    outputDir: ".open-next",
   },
 });
