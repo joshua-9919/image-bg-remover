@@ -3,7 +3,8 @@
   "name": "image-bg-remover",
   "compatibility_date": "2026-03-17",
   "compatibility_flags": ["nodejs_compat"],
+  "main": "worker.js",
   "assets": {
-    "directory": ".open-next/assets"
+    "directory": "out"
   }
 }
