@@ -26,6 +26,18 @@ export default {
     if (url.pathname === "/api/plans" && method === "GET")
       return withCors(handleGetPlans());
 
+    // --- PayPal 支付路由 ---
+    if (url.pathname === "/api/paypal/create-order" && method === "POST")
+      return withCors(handlePaypalCreateOrder(request, env));
+    if (url.pathname === "/api/paypal/capture-order" && method === "POST")
+      return withCors(handlePaypalCaptureOrder(request, env));
+    if (url.pathname === "/api/paypal/create-subscription" && method === "POST")
+      return withCors(handlePaypalCreateSubscription(request, env));
+    if (url.pathname === "/api/paypal/cancel-subscription" && method === "POST")
+      return withCors(handlePaypalCancelSubscription(request, env));
+    if (url.pathname === "/api/paypal/webhook" && method === "POST")
+      return withCors(handlePaypalWebhook(request, env));
+
     // 静态文件
     return env.ASSETS.fetch(request);
   },
@@ -559,4 +571,346 @@ function bufferToBase64(buffer) {
     binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
   }
   return btoa(binary);
+}
+
+// ============================================================
+// PayPal API 工具
+// ============================================================
+const PAYPAL_SANDBOX_URL = "https://api-m.sandbox.paypal.com";
+const PAYPAL_LIVE_URL = "https://api-m.paypal.com";
+
+function getPaypalUrl(env) {
+  return env.PAYPAL_MODE === "live" ? PAYPAL_LIVE_URL : PAYPAL_SANDBOX_URL;
+}
+
+async function getPaypalAccessToken(env) {
+  const baseUrl = getPaypalUrl(env);
+  const auth = btoa(`${env.PAYPAL_CLIENT_ID}:${env.PAYPAL_CLIENT_SECRET}`);
+
+  const res = await fetch(`${baseUrl}/v1/oauth2/token`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Basic ${auth}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "grant_type=client_credentials",
+  });
+
+  const data = await res.json();
+  if (!data.access_token) throw new Error("PayPal auth failed");
+  return data.access_token;
+}
+
+// 按量包配置
+const CREDIT_PACKS = {
+  starter:  { name: "Starter Pack",  price: "1.69", credits: 100 },
+  standard: { name: "Standard Pack", price: "4.69", credits: 300 },
+  pro_pack: { name: "Pro Pack",      price: "9.69", credits: 800 },
+};
+
+// 月订阅配置（需要在 PayPal 后台创建 Plan，这里存 Plan ID）
+const SUBSCRIPTION_PLANS = {
+  basic_monthly: { name: "Basic Monthly", price: "2.99", credits: 250 },
+  pro_monthly:   { name: "Pro Monthly",   price: "6.99", credits: 700 },
+};
+
+// ============================================================
+// POST /api/paypal/create-order — 一次性支付（按量包）
+// ============================================================
+async function handlePaypalCreateOrder(request, env) {
+  try {
+    const user = await getUser(request, env);
+    if (!user) return err("UNAUTHORIZED", "请先登录", 401);
+
+    const body = await request.json();
+    const { planId } = body;
+    const pack = CREDIT_PACKS[planId];
+    if (!pack) return err("INVALID_PLAN", "无效的套餐", 400);
+
+    const accessToken = await getPaypalAccessToken(env);
+    const baseUrl = getPaypalUrl(env);
+
+    const orderRes = await fetch(`${baseUrl}/v2/checkout/orders`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        intent: "CAPTURE",
+        purchase_units: [{
+          reference_id: `${user.id}:${planId}:${now()}`,
+          description: `Image BG Remover - ${pack.name}`,
+          amount: {
+            currency_code: "USD",
+            value: pack.price,
+          },
+        }],
+        application_context: {
+          brand_name: "Image BG Remover",
+          landing_page: "NO_PREFERENCE",
+          user_action: "PAY_NOW",
+          return_url: `${new URL(request.url).origin}/dashboard?payment=success`,
+          cancel_url: `${new URL(request.url).origin}/dashboard?payment=cancel`,
+        },
+      }),
+    });
+
+    const order = await orderRes.json();
+    if (!order.id) throw new Error("Failed to create PayPal order");
+
+    // 记录订单到数据库
+    await env.DB.prepare(
+      `INSERT INTO orders (id, user_id, order_type, plan_name, amount, credits_added, payment_provider, payment_id, payment_status, created_at)
+       VALUES (?, ?, 'credits', ?, ?, ?, 'paypal', ?, 'pending', ?)`
+    ).bind(uuid(), user.id, planId, parseFloat(pack.price), pack.credits, order.id, now()).run();
+
+    return json({
+      success: true,
+      data: {
+        orderId: order.id,
+        approveUrl: order.links?.find(l => l.rel === "approve")?.href,
+      },
+    });
+  } catch (error) {
+    console.error("create-order error:", error.message);
+    return err("PAYPAL_ERROR", error.message, 500);
+  }
+}
+
+// ============================================================
+// POST /api/paypal/capture-order — 确认支付（按量包）
+// ============================================================
+async function handlePaypalCaptureOrder(request, env) {
+  try {
+    const user = await getUser(request, env);
+    if (!user) return err("UNAUTHORIZED", "请先登录", 401);
+
+    const body = await request.json();
+    const { orderId } = body;
+    if (!orderId) return err("NO_ORDER_ID", "缺少订单ID", 400);
+
+    const accessToken = await getPaypalAccessToken(env);
+    const baseUrl = getPaypalUrl(env);
+
+    const captureRes = await fetch(`${baseUrl}/v2/checkout/orders/${orderId}/capture`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+
+    const capture = await captureRes.json();
+    
+    if (capture.status !== "COMPLETED") {
+      return err("PAYMENT_FAILED", "支付未完成", 400);
+    }
+
+    // 查找订单
+    const order = await env.DB.prepare(
+      "SELECT * FROM orders WHERE payment_id = ? AND user_id = ?"
+    ).bind(orderId, user.id).first();
+
+    if (!order) return err("ORDER_NOT_FOUND", "订单不存在", 404);
+    if (order.payment_status === "completed") {
+      return json({ success: true, data: { message: "订单已处理", credits: user.credits } });
+    }
+
+    // 更新订单状态
+    await env.DB.prepare(
+      "UPDATE orders SET payment_status = 'completed', completed_at = ? WHERE payment_id = ?"
+    ).bind(now(), orderId).run();
+
+    // 给用户加额度
+    await env.DB.prepare(
+      "UPDATE users SET credits = credits + ?, plan_type = 'credits', subscription_plan = ?, updated_at = ? WHERE id = ?"
+    ).bind(order.credits_added, order.plan_name, now(), user.id).run();
+
+    const updatedUser = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(user.id).first();
+
+    return json({
+      success: true,
+      data: {
+        message: "支付成功！",
+        creditsAdded: order.credits_added,
+        totalCredits: updatedUser.credits,
+      },
+    });
+  } catch (error) {
+    console.error("capture-order error:", error.message);
+    return err("PAYPAL_ERROR", error.message, 500);
+  }
+}
+
+// ============================================================
+// POST /api/paypal/create-subscription — 月订阅
+// ============================================================
+async function handlePaypalCreateSubscription(request, env) {
+  try {
+    const user = await getUser(request, env);
+    if (!user) return err("UNAUTHORIZED", "请先登录", 401);
+
+    const body = await request.json();
+    const { planId } = body;
+    const plan = SUBSCRIPTION_PLANS[planId];
+    if (!plan) return err("INVALID_PLAN", "无效的订阅套餐", 400);
+
+    // 获取 PayPal Plan ID（需要预先在 PayPal 创建）
+    const paypalPlanId = env[`PAYPAL_PLAN_${planId.toUpperCase()}`];
+    if (!paypalPlanId) {
+      return err("PLAN_NOT_CONFIGURED", "订阅套餐未配置，请联系管理员", 500);
+    }
+
+    const accessToken = await getPaypalAccessToken(env);
+    const baseUrl = getPaypalUrl(env);
+
+    const subRes = await fetch(`${baseUrl}/v1/billing/subscriptions`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        plan_id: paypalPlanId,
+        subscriber: {
+          name: { given_name: user.name || "User" },
+          email_address: user.email,
+        },
+        application_context: {
+          brand_name: "Image BG Remover",
+          locale: "en-US",
+          user_action: "SUBSCRIBE_NOW",
+          return_url: `${new URL(request.url).origin}/dashboard?subscription=success&plan=${planId}`,
+          cancel_url: `${new URL(request.url).origin}/dashboard?subscription=cancel`,
+        },
+        custom_id: `${user.id}:${planId}`,
+      }),
+    });
+
+    const subscription = await subRes.json();
+    if (!subscription.id) throw new Error("Failed to create subscription");
+
+    return json({
+      success: true,
+      data: {
+        subscriptionId: subscription.id,
+        approveUrl: subscription.links?.find(l => l.rel === "approve")?.href,
+      },
+    });
+  } catch (error) {
+    console.error("create-subscription error:", error.message);
+    return err("PAYPAL_ERROR", error.message, 500);
+  }
+}
+
+// ============================================================
+// POST /api/paypal/cancel-subscription — 取消订阅
+// ============================================================
+async function handlePaypalCancelSubscription(request, env) {
+  try {
+    const user = await getUser(request, env);
+    if (!user) return err("UNAUTHORIZED", "请先登录", 401);
+
+    const subId = user.paypal_subscription_id;
+    if (!subId) return err("NO_SUBSCRIPTION", "没有活跃订阅", 400);
+
+    const accessToken = await getPaypalAccessToken(env);
+    const baseUrl = getPaypalUrl(env);
+
+    await fetch(`${baseUrl}/v1/billing/subscriptions/${subId}/cancel`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ reason: "User requested cancellation" }),
+    });
+
+    // 更新用户状态（保留到期日前的额度）
+    await env.DB.prepare(
+      "UPDATE users SET paypal_subscription_id = NULL, updated_at = ? WHERE id = ?"
+    ).bind(now(), user.id).run();
+
+    return json({ success: true, data: { message: "订阅已取消" } });
+  } catch (error) {
+    console.error("cancel-subscription error:", error.message);
+    return err("PAYPAL_ERROR", error.message, 500);
+  }
+}
+
+// ============================================================
+// POST /api/paypal/webhook — PayPal 回调
+// ============================================================
+async function handlePaypalWebhook(request, env) {
+  try {
+    const body = await request.json();
+    const eventType = body.event_type;
+    const resource = body.resource;
+
+    console.log("PayPal webhook:", eventType, JSON.stringify(resource?.id));
+
+    switch (eventType) {
+      case "BILLING.SUBSCRIPTION.ACTIVATED": {
+        const customId = resource.custom_id; // "userId:planId"
+        const [userId, planId] = (customId || "").split(":");
+        const plan = SUBSCRIPTION_PLANS[planId];
+        
+        if (userId && plan) {
+          const subEnd = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30天后
+          await env.DB.prepare(
+            `UPDATE users SET 
+              plan_type = 'subscription', 
+              subscription_plan = ?, 
+              monthly_quota = ?, 
+              used_this_month = 0, 
+              month_reset_date = ?,
+              subscription_start = ?, 
+              subscription_end = ?,
+              paypal_subscription_id = ?,
+              updated_at = ? 
+            WHERE id = ?`
+          ).bind(planId, plan.credits, todayStr(), now(), subEnd, resource.id, now(), userId).run();
+        }
+        break;
+      }
+
+      case "BILLING.SUBSCRIPTION.CANCELLED":
+      case "BILLING.SUBSCRIPTION.EXPIRED": {
+        const subId = resource.id;
+        await env.DB.prepare(
+          "UPDATE users SET paypal_subscription_id = NULL, updated_at = ? WHERE paypal_subscription_id = ?"
+        ).bind(now(), subId).run();
+        break;
+      }
+
+      case "PAYMENT.SALE.COMPLETED": {
+        // 订阅续费成功，重置月额度
+        const subId = resource.billing_agreement_id;
+        if (subId) {
+          const user = await env.DB.prepare(
+            "SELECT * FROM users WHERE paypal_subscription_id = ?"
+          ).bind(subId).first();
+
+          if (user) {
+            const subEnd = Date.now() + 30 * 24 * 60 * 60 * 1000;
+            await env.DB.prepare(
+              `UPDATE users SET 
+                used_this_month = 0, 
+                month_reset_date = ?,
+                subscription_end = ?,
+                updated_at = ? 
+              WHERE id = ?`
+            ).bind(todayStr(), subEnd, now(), user.id).run();
+          }
+        }
+        break;
+      }
+    }
+
+    return json({ success: true });
+  } catch (error) {
+    console.error("webhook error:", error.message);
+    return json({ success: true }); // 必须返回 200，否则 PayPal 会重试
+  }
 }

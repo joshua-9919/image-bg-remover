@@ -337,44 +337,160 @@ export default function DashboardPage() {
 }
 
 // ============================================================
-// Plans Section Component
+// Plans Section Component (with PayPal)
 // ============================================================
 function PlansSection({ currentPlan }: { currentPlan: string }) {
+  const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  async function handleBuyPack(planId: string) {
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+
+    setPurchasing(planId);
+    setMessage(null);
+
+    try {
+      // 1. 创建订单
+      const res = await fetch("/api/paypal/create-order", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ planId }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error?.message || "创建订单失败");
+
+      // 2. 跳转 PayPal 支付
+      if (data.data.approveUrl) {
+        window.location.href = data.data.approveUrl;
+      }
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "购买失败" });
+      setPurchasing(null);
+    }
+  }
+
+  async function handleSubscribe(planId: string) {
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+
+    setPurchasing(planId);
+    setMessage(null);
+
+    try {
+      const res = await fetch("/api/paypal/create-subscription", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ planId }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error?.message || "创建订阅失败");
+
+      if (data.data.approveUrl) {
+        window.location.href = data.data.approveUrl;
+      }
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "订阅失败" });
+      setPurchasing(null);
+    }
+  }
+
+  // 检查 URL 参数处理支付回调
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const payment = params.get("payment");
+    const subscription = params.get("subscription");
+    const paypalOrderId = params.get("token"); // PayPal 回调带的 token 就是 order ID
+
+    if (payment === "success" && paypalOrderId) {
+      // 确认支付
+      const token = localStorage.getItem("auth_token");
+      if (token) {
+        fetch("/api/paypal/capture-order", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ orderId: paypalOrderId }),
+        })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data.success) {
+              setMessage({ type: "success", text: `🎉 支付成功！获得 ${data.data.creditsAdded} 张额度` });
+            } else {
+              setMessage({ type: "error", text: data.error?.message || "确认支付失败" });
+            }
+          })
+          .catch(() => setMessage({ type: "error", text: "确认支付失败" }));
+      }
+      // 清除 URL 参数
+      window.history.replaceState({}, "", "/dashboard");
+    } else if (payment === "cancel") {
+      setMessage({ type: "error", text: "支付已取消" });
+      window.history.replaceState({}, "", "/dashboard");
+    } else if (subscription === "success") {
+      setMessage({ type: "success", text: "🎉 订阅激活中，稍后额度将自动到账" });
+      window.history.replaceState({}, "", "/dashboard");
+    } else if (subscription === "cancel") {
+      setMessage({ type: "error", text: "订阅已取消" });
+      window.history.replaceState({}, "", "/dashboard");
+    }
+  }, []);
+
   return (
     <div className="space-y-8">
+      {/* Message */}
+      {message && (
+        <div className={`rounded-2xl p-4 text-center ${message.type === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+          <p className="font-medium">{message.text}</p>
+        </div>
+      )}
+
       {/* Credit Packs */}
       <div>
-        <h3 className="text-xl font-bold text-gray-800 mb-1">💰 按量包</h3>
-        <p className="text-sm text-gray-600 mb-4">买了不过期，用完再买</p>
+        <h3 className="text-xl font-bold text-gray-800 mb-1">💰 Credit Packs</h3>
+        <p className="text-sm text-gray-600 mb-4">Never expire, buy more when you run out</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
-            { name: "Starter", price: "$1.69", credits: "100", per: "$0.017/张" },
-            { name: "Standard", price: "$4.69", credits: "300", per: "$0.016/张", popular: true },
-            { name: "Pro Pack", price: "$9.69", credits: "800", per: "$0.012/张", best: true },
+            { id: "starter", name: "Starter", price: "$1.69", credits: "100", per: "$0.017/image" },
+            { id: "standard", name: "Standard", price: "$4.69", credits: "300", per: "$0.016/image", popular: true },
+            { id: "pro_pack", name: "Pro Pack", price: "$9.69", credits: "800", per: "$0.012/image", best: true },
           ].map((plan) => (
             <div
-              key={plan.name}
+              key={plan.id}
               className={`relative bg-white/80 backdrop-blur-sm rounded-2xl p-6 border-2 transition-all hover:shadow-lg ${
                 plan.popular ? "border-purple-400 shadow-md" : "border-gray-100"
               }`}
             >
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-purple-600 text-white text-xs font-bold px-3 py-1 rounded-full">
-                  最受欢迎
+                  Most Popular
                 </div>
               )}
               {plan.best && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600 text-white text-xs font-bold px-3 py-1 rounded-full">
-                  最划算
+                  Best Value
                 </div>
               )}
               <div className="text-center">
                 <h4 className="text-lg font-bold text-gray-800">{plan.name}</h4>
                 <div className="text-3xl font-bold text-purple-600 my-3">{plan.price}</div>
-                <p className="text-gray-600 font-medium">{plan.credits} 张额度</p>
+                <p className="text-gray-600 font-medium">{plan.credits} images</p>
                 <p className="text-sm text-gray-500 mt-1">{plan.per}</p>
-                <button className="w-full mt-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-2.5 px-4 rounded-xl hover:shadow-lg transition-all">
-                  购买
+                <button
+                  onClick={() => handleBuyPack(plan.id)}
+                  disabled={purchasing === plan.id}
+                  className="w-full mt-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-2.5 px-4 rounded-xl hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {purchasing === plan.id ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106z"/></svg>
+                      Buy Now
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -384,22 +500,22 @@ function PlansSection({ currentPlan }: { currentPlan: string }) {
 
       {/* Subscriptions */}
       <div>
-        <h3 className="text-xl font-bold text-gray-800 mb-1">📅 月订阅</h3>
-        <p className="text-sm text-gray-600 mb-4">按月付费，每月重置额度</p>
+        <h3 className="text-xl font-bold text-gray-800 mb-1">📅 Monthly Subscriptions</h3>
+        <p className="text-sm text-gray-600 mb-4">Monthly billing, credits reset each month</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[
-            { name: "Basic", price: "$2.99", credits: "250", per: "$0.012/张", period: "/月" },
-            { name: "Pro", price: "$6.99", credits: "700", per: "$0.010/张", period: "/月", popular: true },
+            { id: "basic_monthly", name: "Basic", price: "$2.99", credits: "250", per: "$0.012/image", period: "/mo" },
+            { id: "pro_monthly", name: "Pro", price: "$6.99", credits: "700", per: "$0.010/image", period: "/mo", popular: true },
           ].map((plan) => (
             <div
-              key={plan.name}
+              key={plan.id}
               className={`relative bg-white/80 backdrop-blur-sm rounded-2xl p-6 border-2 transition-all hover:shadow-lg ${
                 plan.popular ? "border-purple-400 shadow-md" : "border-gray-100"
               }`}
             >
               {plan.popular && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-purple-600 text-white text-xs font-bold px-3 py-1 rounded-full">
-                  推荐
+                  Recommended
                 </div>
               )}
               <div className="text-center">
@@ -408,10 +524,24 @@ function PlansSection({ currentPlan }: { currentPlan: string }) {
                   <span className="text-3xl font-bold text-purple-600">{plan.price}</span>
                   <span className="text-gray-500">{plan.period}</span>
                 </div>
-                <p className="text-gray-600 font-medium">{plan.credits} 张/月</p>
+                <p className="text-gray-600 font-medium">{plan.credits} images/month</p>
                 <p className="text-sm text-gray-500 mt-1">{plan.per}</p>
-                <button className="w-full mt-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-2.5 px-4 rounded-xl hover:shadow-lg transition-all">
-                  订阅
+                <button
+                  onClick={() => handleSubscribe(plan.id)}
+                  disabled={purchasing === plan.id}
+                  className="w-full mt-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-2.5 px-4 rounded-xl hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {purchasing === plan.id ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M7.076 21.337H2.47a.641.641 0 0 1-.633-.74L4.944.901C5.026.382 5.474 0 5.998 0h7.46c2.57 0 4.578.543 5.69 1.81 1.01 1.15 1.304 2.42 1.012 4.287-.023.143-.047.288-.077.437-.983 5.05-4.349 6.797-8.647 6.797h-2.19c-.524 0-.968.382-1.05.9l-1.12 7.106z"/></svg>
+                      Subscribe
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -421,7 +551,7 @@ function PlansSection({ currentPlan }: { currentPlan: string }) {
 
       <div className="bg-blue-50 rounded-2xl p-4 text-center">
         <p className="text-sm text-blue-700">
-          🔒 支付由 PayPal 安全处理 · 按量包永不过期 · 订阅可随时取消
+          🔒 Payments securely processed by PayPal · Credit packs never expire · Cancel subscription anytime
         </p>
       </div>
     </div>
