@@ -2,6 +2,7 @@ export type Locale = "en" | "zh-CN" | "zh-TW" | "ja" | "ko" | "de" | "es" | "fr"
 
 export const LANGUAGES: { code: Locale; name: string; nativeName: string }[] = [
   { code: "en", name: "English", nativeName: "English" },
+  { code: "id", name: "Bahasa Indonesia", nativeName: "Bahasa Indonesia" },
   { code: "zh-CN", name: "简体中文", nativeName: "简体中文" },
   { code: "zh-TW", name: "繁體中文", nativeName: "繁體中文" },
   { code: "ja", name: "日本語", nativeName: "日本語" },
@@ -11,7 +12,6 @@ export const LANGUAGES: { code: Locale; name: string; nativeName: string }[] = [
   { code: "fr", name: "Français", nativeName: "Français" },
   { code: "it", name: "Italiano", nativeName: "Italiano" },
   { code: "pt", name: "Português", nativeName: "Português" },
-  { code: "id", name: "Bahasa Indonesia", nativeName: "Bahasa Indonesia" },
 ];
 
 export const DEFAULT_LOCALE: Locale = "en";

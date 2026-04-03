@@ -39,7 +39,9 @@ export default function LanguageSwitcher({ locale, onChange }: Props) {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-50 max-h-80 overflow-y-auto">
+        <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-50 max-h-[420px] overflow-y-auto scrollbar-thin"
+          style={{ scrollbarWidth: "thin", scrollbarColor: "#d1d5db transparent" }}
+        >
           {LANGUAGES.map((lang) => (
             <button
               key={lang.code}
