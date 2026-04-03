@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import Image from 'next/image';
 
 export default function Home() {
@@ -9,7 +9,18 @@ export default function Home() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>('');
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userName, setUserName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+    const user = localStorage.getItem('user');
+    if (token && user) {
+      setIsLoggedIn(true);
+      try { setUserName(JSON.parse(user).name); } catch {}
+    }
+  }, []);
 
   // 处理文件选择
   const handleFileSelect = useCallback((file: File) => {
@@ -67,14 +78,25 @@ export default function Home() {
       const formData = new FormData();
       formData.append('image', blob, fileName || 'image.png');
 
+      const headers: Record<string, string> = {};
+      const token = localStorage.getItem('auth_token');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
       const apiResponse = await fetch('/api/remove', {
         method: 'POST',
+        headers,
         body: formData,
       });
 
       const result = await apiResponse.json();
 
       if (!apiResponse.ok) {
+        if (result.error?.code === 'GUEST_LIMIT') {
+          throw new Error('免费试用已用完，请注册登录获得更多额度');
+        }
+        if (result.error?.code === 'QUOTA_EXCEEDED') {
+          throw new Error(result.error.message || '额度已用完');
+        }
         throw new Error(result.error?.message || '处理失败');
       }
 
@@ -112,7 +134,26 @@ export default function Home() {
       {/* 头部 */}
       <header className="relative overflow-hidden bg-white/50 backdrop-blur-sm border-b border-gray-100">
         <div className="absolute inset-0 bg-gradient-to-br from-purple-50/50 via-transparent to-pink-50/50" />
-        <div className="relative max-w-6xl mx-auto px-4 py-12 md:py-16">
+        <div className="relative max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">🎨</span>
+            <span className="font-bold text-gray-800">Image BG Remover</span>
+          </div>
+          <div className="flex items-center gap-3">
+            {isLoggedIn ? (
+              <>
+                <a href="/dashboard" className="text-sm text-purple-600 hover:text-purple-800 font-medium transition-colors">
+                  {userName || '用户中心'}
+                </a>
+              </>
+            ) : (
+              <a href="/login" className="text-sm bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 font-medium transition-colors">
+                登录
+              </a>
+            )}
+          </div>
+        </div>
+        <div className="relative max-w-6xl mx-auto px-4 py-8 md:py-12">
           <div className="text-center">
             <div className="inline-flex items-center gap-2 mb-4 px-4 py-2 rounded-full bg-purple-100/80 backdrop-blur-sm border border-purple-200">
               <span className="text-2xl">🎨</span>

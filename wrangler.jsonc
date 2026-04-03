@@ -6,5 +6,18 @@
   "main": "worker.js",
   "assets": {
     "directory": "out"
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "image-bg-remover-db",
+      "database_id": "3f2f45d0-67ad-4432-b1c3-62d61941c4c5"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "SESSIONS",
+      "id": "6120d37ad2be48e8b19d809db8218bad"
+    }
+  ]
 }
