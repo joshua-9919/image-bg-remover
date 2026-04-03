@@ -24,7 +24,7 @@ async function handleRemoveBg(request, env) {
       );
     }
 
-    const apiKey = env.OPENBG_API_KEY;
+    const apiKey = env.REMOVEBG_API_KEY;
     if (!apiKey) {
       return Response.json(
         { success: false, error: { code: "API_ERROR", message: "服务配置错误" } },
@@ -34,56 +34,81 @@ async function handleRemoveBg(request, env) {
 
     const startTime = Date.now();
 
-    // 调用 openBGremover API
-    const openBgFormData = new FormData();
-    openBgFormData.append("image", imageFile);
+    // 调用 RemoveBG API (removebgapi.com)
+    const removeBgFormData = new FormData();
+    removeBgFormData.append("image_file", imageFile);
 
-    const apiResponse = await fetch("https://api.openbgremover.com/v1/remove", {
+    const apiResponse = await fetch("https://removebgapi.com/api/v1/remove", {
       method: "POST",
       headers: { "Authorization": `Bearer ${apiKey}` },
-      body: openBgFormData,
+      body: removeBgFormData,
     });
 
     if (!apiResponse.ok) {
-      const errorData = await apiResponse.json().catch(() => ({}));
+      const errorText = await apiResponse.text().catch(() => "未知错误");
+      console.error(`RemoveBG API error: ${apiResponse.status} - ${errorText}`);
 
       if (apiResponse.status === 402) {
         return Response.json(
-          { success: false, error: { code: "API_QUOTA_EXCEEDED", message: "额度已用完，请充值或升级套餐" } },
+          { success: false, error: { code: "API_QUOTA_EXCEEDED", message: "额度已用完" } },
           { status: 402 }
         );
       }
 
-      throw new Error(errorData.message || "背景移除失败");
+      throw new Error(`API 返回 ${apiResponse.status}: ${errorText}`);
     }
 
-    const result = await apiResponse.json();
-
-    if (!result.success || !result.result_url) {
-      throw new Error("API 返回异常");
-    }
-
-    // 下载处理后的图片并转 base64
-    const imageResponse = await fetch(result.result_url);
-    const processedBuffer = await imageResponse.arrayBuffer();
-    const bytes = new Uint8Array(processedBuffer);
+    // API 直接返回图片二进制数据
+    const contentType = apiResponse.headers.get("content-type") || "";
     
-    // 高效 base64 编码
-    let binary = "";
-    const chunkSize = 8192;
-    for (let i = 0; i < bytes.length; i += chunkSize) {
-      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
-    }
-    const base64 = btoa(binary);
+    if (contentType.includes("image")) {
+      // 直接返回图片
+      const processedBuffer = await apiResponse.arrayBuffer();
+      const bytes = new Uint8Array(processedBuffer);
+      
+      let binary = "";
+      const chunkSize = 8192;
+      for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+      }
+      const base64 = btoa(binary);
 
-    return Response.json({
-      success: true,
-      data: {
-        imageBase64: `data:image/png;base64,${base64}`,
-        processingTime: Date.now() - startTime,
-      },
-    });
+      return Response.json({
+        success: true,
+        data: {
+          imageBase64: `data:image/png;base64,${base64}`,
+          processingTime: Date.now() - startTime,
+        },
+      });
+    } else {
+      // JSON 响应（可能包含 result_url）
+      const result = await apiResponse.json();
+      
+      if (result.result_url) {
+        const imageResponse = await fetch(result.result_url);
+        const processedBuffer = await imageResponse.arrayBuffer();
+        const bytes = new Uint8Array(processedBuffer);
+        
+        let binary = "";
+        const chunkSize = 8192;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+        }
+        const base64 = btoa(binary);
+
+        return Response.json({
+          success: true,
+          data: {
+            imageBase64: `data:image/png;base64,${base64}`,
+            processingTime: Date.now() - startTime,
+          },
+        });
+      }
+      
+      throw new Error("API 返回格式异常");
+    }
   } catch (error) {
+    console.error("handleRemoveBg error:", error.message, error.stack);
     return Response.json(
       { success: false, error: { code: "PROCESSING_ERROR", message: error.message || "处理失败" } },
       { status: 500 }
