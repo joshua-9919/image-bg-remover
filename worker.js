@@ -24,7 +24,7 @@ async function handleRemoveBg(request, env) {
       );
     }
 
-    const apiKey = env.REMOVE_BG_API_KEY;
+    const apiKey = env.OPENBG_API_KEY;
     if (!apiKey) {
       return Response.json(
         { success: false, error: { code: "API_ERROR", message: "服务配置错误" } },
@@ -34,14 +34,14 @@ async function handleRemoveBg(request, env) {
 
     const startTime = Date.now();
 
-    const removeBgFormData = new FormData();
-    removeBgFormData.append("image_file", imageFile);
-    removeBgFormData.append("size", "auto");
+    // 调用 openBGremover API
+    const openBgFormData = new FormData();
+    openBgFormData.append("image", imageFile);
 
-    const apiResponse = await fetch("https://api.remove.bg/v1.0/removebg", {
+    const apiResponse = await fetch("https://api.openbgremover.com/v1/remove", {
       method: "POST",
-      headers: { "X-Api-Key": apiKey },
-      body: removeBgFormData,
+      headers: { "Authorization": `Bearer ${apiKey}` },
+      body: openBgFormData,
     });
 
     if (!apiResponse.ok) {
@@ -49,15 +49,23 @@ async function handleRemoveBg(request, env) {
 
       if (apiResponse.status === 402) {
         return Response.json(
-          { success: false, error: { code: "API_QUOTA_EXCEEDED", message: "今日免费次数已用完，明日再来吧" } },
+          { success: false, error: { code: "API_QUOTA_EXCEEDED", message: "额度已用完，请充值或升级套餐" } },
           { status: 402 }
         );
       }
 
-      throw new Error(errorData.errors?.[0]?.title || "背景移除失败");
+      throw new Error(errorData.message || "背景移除失败");
     }
 
-    const processedBuffer = await apiResponse.arrayBuffer();
+    const result = await apiResponse.json();
+
+    if (!result.success || !result.result_url) {
+      throw new Error("API 返回异常");
+    }
+
+    // 下载处理后的图片并转 base64
+    const imageResponse = await fetch(result.result_url);
+    const processedBuffer = await imageResponse.arrayBuffer();
     const bytes = new Uint8Array(processedBuffer);
     
     // 高效 base64 编码
