@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import Image from 'next/image';
+import { Locale, getLocale, t } from '../lib/i18n';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 export default function Home() {
   const [originalImage, setOriginalImage] = useState<string | null>(null);
@@ -11,9 +13,11 @@ export default function Home() {
   const [fileName, setFileName] = useState<string>('');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userName, setUserName] = useState('');
+  const [locale, setLocale] = useState<Locale>('en');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    setLocale(getLocale());
     const token = localStorage.getItem('auth_token');
     const user = localStorage.getItem('user');
     if (token && user) {
@@ -140,15 +144,16 @@ export default function Home() {
             <span className="font-bold text-gray-800">Image BG Remover</span>
           </div>
           <div className="flex items-center gap-3">
+            <LanguageSwitcher locale={locale} onChange={setLocale} />
             {isLoggedIn ? (
               <>
                 <a href="/dashboard" className="text-sm text-purple-600 hover:text-purple-800 font-medium transition-colors">
-                  {userName || '用户中心'}
+                  {userName || t(locale, 'nav.dashboard')}
                 </a>
               </>
             ) : (
               <a href="/login" className="text-sm bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 font-medium transition-colors">
-                登录
+                {t(locale, 'nav.login')}
               </a>
             )}
           </div>
@@ -157,13 +162,13 @@ export default function Home() {
           <div className="text-center">
             <div className="inline-flex items-center gap-2 mb-4 px-4 py-2 rounded-full bg-purple-100/80 backdrop-blur-sm border border-purple-200">
               <span className="text-2xl">🎨</span>
-              <span className="text-sm font-medium text-purple-700">AI 智能抠图工具</span>
+              <span className="text-sm font-medium text-purple-700">{t(locale, 'app.tagline')}</span>
             </div>
             <h1 className="text-5xl md:text-6xl font-bold mb-4 gradient-text">
               Image BG Remover
             </h1>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              一键移除图片背景，<span className="font-semibold text-purple-600">3 秒</span>完成抠图
+              {t(locale, 'home.subtitle')}<span className="font-semibold text-purple-600">{t(locale, 'home.seconds')}</span>
             </p>
           </div>
         </div>
@@ -193,10 +198,10 @@ export default function Home() {
                 </div>
                 <div>
                   <p className="text-2xl font-semibold text-gray-800 mb-2">
-                    拖拽图片到这里，或点击选择
+                    {t(locale, 'home.upload.title')}
                   </p>
                   <p className="text-gray-500">
-                    支持 JPG, PNG, WebP · 最大 5MB
+                    {t(locale, 'home.upload.formats')}
                   </p>
                 </div>
               </div>
@@ -226,7 +231,7 @@ export default function Home() {
                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
                       <span className="text-sm">📷</span>
                     </div>
-                    <h3 className="text-lg font-semibold text-gray-800">原图</h3>
+                    <h3 className="text-lg font-semibold text-gray-800">{t(locale, 'home.original')}</h3>
                   </div>
                   <span className="text-xs text-gray-500 bg-gray-100 px-3 py-1 rounded-full truncate max-w-[200px]">
                     {fileName}
@@ -250,7 +255,7 @@ export default function Home() {
                       <span className="text-sm">✨</span>
                     </div>
                     <h3 className="text-lg font-semibold text-gray-800">
-                      {isProcessing ? '处理中...' : '透明背景'}
+                      {isProcessing ? t(locale, 'home.processing') : t(locale, 'home.result')}
                     </h3>
                   </div>
                 </div>
@@ -258,8 +263,8 @@ export default function Home() {
                   {isProcessing ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80">
                       <div className="spinner mb-4"></div>
-                      <p className="text-gray-600 font-medium">正在智能抠图...</p>
-                      <p className="text-gray-500 text-sm mt-1">通常需要 3-5 秒</p>
+                      <p className="text-gray-600 font-medium">{t(locale, 'home.processing')}</p>
+                      <p className="text-gray-500 text-sm mt-1">{t(locale, 'home.processing.time')}</p>
                     </div>
                   ) : processedImage ? (
                     <Image
@@ -271,7 +276,7 @@ export default function Home() {
                   ) : (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/60">
                       <div className="text-5xl mb-3 opacity-50">✨</div>
-                      <p className="text-gray-600 font-medium">点击"移除背景"开始处理</p>
+                      <p className="text-gray-600 font-medium">{t(locale, 'home.btn.remove')}</p>
                     </div>
                   )}
                 </div>
@@ -286,7 +291,7 @@ export default function Home() {
                   className="btn-primary flex items-center gap-2 text-lg"
                 >
                   <span>✨</span>
-                  <span>移除背景</span>
+                  <span>{t(locale, 'home.btn.remove')}</span>
                 </button>
               )}
 
@@ -297,14 +302,14 @@ export default function Home() {
                     className="btn-primary flex items-center gap-2 text-lg"
                   >
                     <span>⬇️</span>
-                    <span>下载 PNG</span>
+                    <span>{t(locale, 'home.btn.download')}</span>
                   </button>
                   <button
                     onClick={handleReset}
                     className="btn-secondary flex items-center gap-2 text-lg"
                   >
                     <span>🔄</span>
-                    <span>处理另一张</span>
+                    <span>{t(locale, 'home.btn.another')}</span>
                   </button>
                 </>
               )}
@@ -322,8 +327,8 @@ export default function Home() {
                 <div className="flex items-center justify-center gap-2 text-green-700">
                   <span className="text-2xl">✅</span>
                   <div>
-                    <p className="font-semibold">处理完成！图片已准备好下载</p>
-                    <p className="text-sm text-green-600 mt-1">透明背景 PNG 格式，可直接使用</p>
+                    <p className="font-semibold">{t(locale, 'home.done')}</p>
+                    <p className="text-sm text-green-600 mt-1">{t(locale, 'home.done.desc')}</p>
                   </div>
                 </div>
               </div>
@@ -336,56 +341,56 @@ export default function Home() {
           <div className="mt-16 grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="feature-card">
               <div className="text-4xl mb-4">⚡</div>
-              <h3 className="font-semibold text-xl text-gray-800 mb-2">3 秒完成</h3>
-              <p className="text-gray-600 leading-relaxed">AI 智能识别，快速移除背景</p>
+              <h3 className="font-semibold text-xl text-gray-800 mb-2">{t(locale, 'home.feat.fast')}</h3>
+              <p className="text-gray-600 leading-relaxed">{t(locale, 'home.feat.fast.desc')}</p>
             </div>
             <div className="feature-card">
               <div className="text-4xl mb-4">🔒</div>
-              <h3 className="font-semibold text-xl text-gray-800 mb-2">隐私保护</h3>
-              <p className="text-gray-600 leading-relaxed">图片不落盘，处理完即删除</p>
+              <h3 className="font-semibold text-xl text-gray-800 mb-2">{t(locale, 'home.feat.privacy')}</h3>
+              <p className="text-gray-600 leading-relaxed">{t(locale, 'home.feat.privacy.desc')}</p>
             </div>
             <div className="feature-card">
               <div className="text-4xl mb-4">🆓</div>
-              <h3 className="font-semibold text-xl text-gray-800 mb-2">免费使用</h3>
-              <p className="text-gray-600 leading-relaxed">无需注册，完全免费</p>
+              <h3 className="font-semibold text-xl text-gray-800 mb-2">{t(locale, 'home.feat.free')}</h3>
+              <p className="text-gray-600 leading-relaxed">{t(locale, 'home.feat.free.desc')}</p>
             </div>
           </div>
         )}
 
-        {/* 使用指南 */}
+        {/* {t(locale, 'home.guide')} */}
         {!originalImage && (
           <div className="mt-16 feature-card p-8">
             <h2 className="text-2xl font-bold mb-6 text-gray-800 flex items-center gap-2">
               <span>📖</span>
-              使用指南
+              {t(locale, 'home.guide')}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="flex items-start gap-4">
                 <div className="step-indicator flex-shrink-0">1</div>
                 <div>
-                  <h4 className="font-semibold text-gray-800 mb-1">上传图片</h4>
-                  <p className="text-sm text-gray-600">拖拽或点击选择</p>
+                  <h4 className="font-semibold text-gray-800 mb-1">{t(locale, 'home.step1')}</h4>
+                  <p className="text-sm text-gray-600">{t(locale, 'home.step1.desc')}</p>
                 </div>
               </div>
               <div className="flex items-start gap-4">
                 <div className="step-indicator flex-shrink-0">2</div>
                 <div>
-                  <h4 className="font-semibold text-gray-800 mb-1">移除背景</h4>
-                  <p className="text-sm text-gray-600">点击处理按钮</p>
+                  <h4 className="font-semibold text-gray-800 mb-1">{t(locale, 'home.step2')}</h4>
+                  <p className="text-sm text-gray-600">{t(locale, 'home.step2.desc')}</p>
                 </div>
               </div>
               <div className="flex items-start gap-4">
                 <div className="step-indicator flex-shrink-0">3</div>
                 <div>
-                  <h4 className="font-semibold text-gray-800 mb-1">查看对比</h4>
-                  <p className="text-sm text-gray-600">左右分栏对比</p>
+                  <h4 className="font-semibold text-gray-800 mb-1">{t(locale, 'home.step3')}</h4>
+                  <p className="text-sm text-gray-600">{t(locale, 'home.step3.desc')}</p>
                 </div>
               </div>
               <div className="flex items-start gap-4">
                 <div className="step-indicator flex-shrink-0">4</div>
                 <div>
-                  <h4 className="font-semibold text-gray-800 mb-1">下载结果</h4>
-                  <p className="text-sm text-gray-600">保存透明 PNG</p>
+                  <h4 className="font-semibold text-gray-800 mb-1">{t(locale, 'home.step4')}</h4>
+                  <p className="text-sm text-gray-600">{t(locale, 'home.step4.desc')}</p>
                 </div>
               </div>
             </div>
@@ -396,7 +401,7 @@ export default function Home() {
       {/* 页脚 */}
       <footer className="mt-20 border-t border-gray-100 bg-white/50 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-4 py-8 text-center text-gray-500 text-sm">
-          <p>© 2026 Image BG Remover · Powered by Remove.bg</p>
+          <p>{t(locale, 'home.footer')}</p>
         </div>
       </footer>
     </main>
