@@ -39,9 +39,7 @@ export default function LanguageSwitcher({ locale, onChange }: Props) {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-50 max-h-[420px] overflow-y-auto scrollbar-thin"
-          style={{ scrollbarWidth: "thin", scrollbarColor: "#d1d5db transparent" }}
-        >
+        <div className="absolute right-0 top-full mt-1 w-52 bg-white rounded-xl shadow-xl border border-gray-200 py-1 z-50">
           {LANGUAGES.map((lang) => (
             <button
               key={lang.code}
@@ -50,7 +48,7 @@ export default function LanguageSwitcher({ locale, onChange }: Props) {
                 onChange(lang.code);
                 setIsOpen(false);
               }}
-              className={`w-full px-4 py-2.5 text-left text-sm flex items-center justify-between hover:bg-purple-50 transition-colors ${
+              className={`w-full px-4 py-2 text-left text-sm flex items-center justify-between hover:bg-purple-50 transition-colors ${
                 locale === lang.code ? "text-purple-700 bg-purple-50 font-medium" : "text-gray-700"
               }`}
             >
