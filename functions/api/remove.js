@@ -25,9 +25,9 @@ export async function onRequestPost(context) {
     removeBgFormData.append('image_file', imageFile);
     removeBgFormData.append('size', 'auto');
 
-    const apiResponse = await fetch('https://api.remove.bg/v1.0/removebg', {
+    const apiResponse = await fetch('https://api.poof.bg/v1/remove', {
       method: 'POST',
-      headers: { 'X-Api-Key': apiKey },
+      headers: { 'x-api-key': apiKey },
       body: removeBgFormData,
     });
 
