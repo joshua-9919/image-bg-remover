@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Locale, getLocale, t } from "../../lib/i18n";
+import LanguageSwitcher from "../../components/LanguageSwitcher";
 
 interface User {
   id: string;
@@ -54,6 +56,11 @@ export default function DashboardPage() {
   const [historyTotal, setHistoryTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"overview" | "history" | "plans">("overview");
+  const [locale, setLocale] = useState<Locale>("en");
+
+  useEffect(() => {
+    setLocale(getLocale());
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem("auth_token");
@@ -136,8 +143,8 @@ export default function DashboardPage() {
             <a href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
               <span className="text-3xl">🎨</span>
               <div>
-                <h1 className="text-xl font-bold text-gray-800">Image BG Remover</h1>
-                <p className="text-sm text-gray-600">用户中心</p>
+                <h1 className="text-xl font-bold text-gray-800">{t(locale, "app.name")}</h1>
+                <p className="text-sm text-gray-600">{t(locale, "nav.dashboard")}</p>
               </div>
             </a>
             <div className="flex items-center gap-4">
@@ -157,11 +164,12 @@ export default function DashboardPage() {
                   <p className="text-xs text-gray-500">{user.email}</p>
                 </div>
               </div>
+              <LanguageSwitcher locale={locale} onChange={setLocale} />
               <button
                 onClick={handleSignOut}
                 className="px-4 py-2 text-sm text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
               >
-                退出
+                {t(locale, "nav.signout")}
               </button>
             </div>
           </div>
@@ -173,17 +181,17 @@ export default function DashboardPage() {
         {/* Welcome */}
         <div className="mb-8">
           <h2 className="text-2xl font-bold text-gray-800 mb-1">
-            你好，{user.name} 👋
+            {t(locale, "dash.welcome", { name: user.name })}
           </h2>
-          <p className="text-gray-600">{usage?.message || "欢迎使用 Image BG Remover"}</p>
+          <p className="text-gray-600">{usage?.message || t(locale, "app.tagline")}</p>
         </div>
 
         {/* Tabs */}
         <div className="flex gap-1 mb-8 bg-white/60 p-1 rounded-xl border border-gray-200 w-fit">
           {[
-            { key: "overview", label: "📊 总览", },
-            { key: "history", label: "🖼️ 历史", },
-            { key: "plans", label: "💎 套餐", },
+            { key: "overview", label: t(locale, "dash.tab.overview"), },
+            { key: "history", label: t(locale, "dash.tab.history"), },
+            { key: "plans", label: t(locale, "dash.tab.plans"), },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -209,19 +217,19 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-xl bg-purple-100 flex items-center justify-center text-xl">💎</div>
                   <div>
-                    <p className="text-sm text-gray-500">当前套餐</p>
+                    <p className="text-sm text-gray-500">{t(locale, "dash.plan")}</p>
                     <p className="text-lg font-bold text-gray-800">
-                      {user.planType === "free" ? "免费试用" :
-                       user.planType === "credits" ? "按量包" : "月订阅"}
+                      {user.planType === "free" ? t(locale, "dash.plan.free") :
+                       user.planType === "credits" ? t(locale, "dash.plan.credits") : t(locale, "dash.plan.subscription")}
                     </p>
                   </div>
                 </div>
                 {user.planType === "free" && usage?.daysLeft !== undefined && (
                   <div className="text-sm text-gray-600">
                     {usage.trialExpired ? (
-                      <span className="text-red-500 font-medium">试用已到期</span>
+                      <span className="text-red-500 font-medium">{t(locale, "dash.trial.expired")}</span>
                     ) : (
-                      <span>剩余 <span className="font-bold text-purple-600">{usage.daysLeft}</span> 天</span>
+                      <span>{t(locale, "dash.trial.days").replace("{days}", "")} <span className="font-bold text-purple-600">{usage.daysLeft}</span> {t(locale, "dash.trial.days").split(" ").pop()}</span>
                     )}
                   </div>
                 )}
@@ -232,9 +240,9 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center text-xl">🎯</div>
                   <div>
-                    <p className="text-sm text-gray-500">剩余额度</p>
+                    <p className="text-sm text-gray-500">{t(locale, "dash.remaining")}</p>
                     <p className="text-lg font-bold text-gray-800">
-                      {usage?.remaining ?? 0} 张
+                      {usage?.remaining ?? 0} {t(locale, "dash.remaining.unit")}
                     </p>
                   </div>
                 </div>
@@ -261,32 +269,32 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-xl">📷</div>
                   <div>
-                    <p className="text-sm text-gray-500">已处理图片</p>
-                    <p className="text-lg font-bold text-gray-800">{historyTotal} 张</p>
+                    <p className="text-sm text-gray-500">{t(locale, "dash.processed")}</p>
+                    <p className="text-lg font-bold text-gray-800">{historyTotal} {t(locale, "dash.remaining.unit")}</p>
                   </div>
                 </div>
                 <div className="text-sm text-gray-600">
-                  今日 {usage?.todayUsed || 0} 张 · 本月 {usage?.monthUsed || 0} 张
+                  {t(locale, "dash.today")} {usage?.todayUsed || 0} {t(locale, "dash.remaining.unit")} · {t(locale, "dash.month")} {usage?.monthUsed || 0} {t(locale, "dash.remaining.unit")}
                 </div>
               </div>
             </div>
 
             {/* Quick Actions */}
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-100">
-              <h3 className="text-lg font-semibold text-gray-800 mb-4">快捷操作</h3>
+              <h3 className="text-lg font-semibold text-gray-800 mb-4">{t(locale, "dash.quick")}</h3>
               <div className="flex flex-wrap gap-3">
                 <a
                   href="/"
                   className="inline-flex items-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-3 px-6 rounded-xl hover:shadow-lg transition-all"
                 >
-                  📤 去处理图片
+                  {t(locale, "dash.btn.process")}
                 </a>
                 {(user.planType === "free" || usage?.remaining === 0) && (
                   <button
                     onClick={() => setActiveTab("plans")}
                     className="inline-flex items-center gap-2 bg-white text-purple-600 font-semibold py-3 px-6 rounded-xl border-2 border-purple-200 hover:border-purple-400 transition-all"
                   >
-                    💎 升级套餐
+                    {t(locale, "dash.btn.upgrade")}
                   </button>
                 )}
               </div>
@@ -300,16 +308,16 @@ export default function DashboardPage() {
             {history.length === 0 ? (
               <div className="p-12 text-center">
                 <div className="text-6xl mb-4">📷</div>
-                <h3 className="text-xl font-semibold text-gray-800 mb-2">还没有历史记录</h3>
-                <p className="text-gray-600 mb-6">处理的图片会自动保存在这里</p>
+                <h3 className="text-xl font-semibold text-gray-800 mb-2">{t(locale, "dash.history.empty")}</h3>
+                <p className="text-gray-600 mb-6">{t(locale, "dash.history.empty.desc")}</p>
                 <a href="/" className="inline-flex items-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-3 px-6 rounded-xl">
-                  📤 去处理图片
+                  {t(locale, "dash.btn.process")}
                 </a>
               </div>
             ) : (
               <div className="divide-y divide-gray-100">
                 <div className="px-6 py-4 bg-gray-50/50 rounded-t-2xl">
-                  <p className="text-sm font-medium text-gray-600">共 {historyTotal} 条记录</p>
+                  <p className="text-sm font-medium text-gray-600">{t(locale, "dash.history.total", { count: String(historyTotal) })}</p>
                 </div>
                 {history.map((record) => (
                   <div key={record.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50/50 transition-colors">
@@ -318,7 +326,7 @@ export default function DashboardPage() {
                       <div>
                         <p className="text-sm font-medium text-gray-800">{record.file_name}</p>
                         <p className="text-xs text-gray-500">
-                          {new Date(record.created_at).toLocaleString("zh-CN")} · {formatFileSize(record.file_size)}
+                          {new Date(record.created_at).toLocaleString(locale === "zh-CN" ? "zh-CN" : locale)} · {formatFileSize(record.file_size)}
                         </p>
                       </div>
                     </div>
@@ -330,7 +338,7 @@ export default function DashboardPage() {
         )}
 
         {/* Plans Tab */}
-        {activeTab === "plans" && <PlansSection currentPlan={user.planType} />}
+        {activeTab === "plans" && <PlansSection currentPlan={user.planType} locale={locale} />}
       </main>
     </div>
   );
@@ -339,7 +347,7 @@ export default function DashboardPage() {
 // ============================================================
 // Plans Section Component (with PayPal)
 // ============================================================
-function PlansSection({ currentPlan }: { currentPlan: string }) {
+function PlansSection({ currentPlan, locale }: { currentPlan: string; locale: Locale }) {
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -358,14 +366,14 @@ function PlansSection({ currentPlan }: { currentPlan: string }) {
         body: JSON.stringify({ planId }),
       });
       const data = await res.json();
-      if (!data.success) throw new Error(data.error?.message || "创建订单失败");
+      if (!data.success) throw new Error(data.error?.message || "Failed to create order");
 
       // 2. 跳转 PayPal 支付
       if (data.data.approveUrl) {
         window.location.href = data.data.approveUrl;
       }
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "购买失败" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "Purchase failed" });
       setPurchasing(null);
     }
   }
@@ -384,13 +392,13 @@ function PlansSection({ currentPlan }: { currentPlan: string }) {
         body: JSON.stringify({ planId }),
       });
       const data = await res.json();
-      if (!data.success) throw new Error(data.error?.message || "创建订阅失败");
+      if (!data.success) throw new Error(data.error?.message || "Failed to create subscription");
 
       if (data.data.approveUrl) {
         window.location.href = data.data.approveUrl;
       }
     } catch (err) {
-      setMessage({ type: "error", text: err instanceof Error ? err.message : "订阅失败" });
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "Subscription failed" });
       setPurchasing(null);
     }
   }
@@ -414,12 +422,12 @@ function PlansSection({ currentPlan }: { currentPlan: string }) {
           .then((r) => r.json())
           .then((data) => {
             if (data.success) {
-              setMessage({ type: "success", text: `🎉 支付成功！获得 ${data.data.creditsAdded} 张额度` });
+              setMessage({ type: "success", text: `Payment successful! ${data.data.creditsAdded} credits added.` });
             } else {
-              setMessage({ type: "error", text: data.error?.message || "确认支付失败" });
+              setMessage({ type: "error", text: data.error?.message || "Payment confirmation failed" });
             }
           })
-          .catch(() => setMessage({ type: "error", text: "确认支付失败" }));
+          .catch(() => setMessage({ type: "error", text: "Payment confirmation failed" }));
       }
       // 清除 URL 参数
       window.history.replaceState({}, "", "/dashboard");
@@ -427,10 +435,10 @@ function PlansSection({ currentPlan }: { currentPlan: string }) {
       setMessage({ type: "error", text: "支付已取消" });
       window.history.replaceState({}, "", "/dashboard");
     } else if (subscription === "success") {
-      setMessage({ type: "success", text: "🎉 订阅激活中，稍后额度将自动到账" });
+      setMessage({ type: "success", text: "Subscription activated! Credits will be added shortly." });
       window.history.replaceState({}, "", "/dashboard");
     } else if (subscription === "cancel") {
-      setMessage({ type: "error", text: "订阅已取消" });
+      setMessage({ type: "error", text: "Subscription cancelled" });
       window.history.replaceState({}, "", "/dashboard");
     }
   }, []);
@@ -450,9 +458,9 @@ function PlansSection({ currentPlan }: { currentPlan: string }) {
         <p className="text-sm text-gray-600 mb-4">Never expire, buy more when you run out</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
-            { id: "starter", name: "Starter", price: "$1.69", credits: "100", per: "$0.017/image" },
-            { id: "standard", name: "Standard", price: "$4.69", credits: "300", per: "$0.016/image", popular: true },
-            { id: "pro_pack", name: "Pro Pack", price: "$9.69", credits: "800", per: "$0.012/image", best: true },
+            { id: "pro", name: "Pro", price: "$1.69", credits: "100", per: "$0.017/image" },
+            { id: "enterprise300", name: "Enterprise", price: "$4.69", credits: "300", per: "$0.016/image", popular: true },
+            { id: "enterprise800", name: "Enterprise Plus", price: "$9.69", credits: "800", per: "$0.012/image", best: true },
           ].map((plan) => (
             <div
               key={plan.id}

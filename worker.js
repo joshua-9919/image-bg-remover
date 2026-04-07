@@ -38,8 +38,9 @@ export default {
     if (url.pathname === "/api/paypal/webhook" && method === "POST")
       return withCors(handlePaypalWebhook(request, env));
 
-    // 静态文件
-    return env.ASSETS.fetch(request);
+    // 静态文件请求应该由 Cloudflare 自动处理，不会到达这里
+    // 如果到达这里，返回 404
+    return new Response("Not Found", { status: 404 });
   },
 };
 
@@ -121,9 +122,9 @@ const PLANS = {
   pro_monthly:   { name: "Pro",    type: "subscription", price: 6.99, credits: 700 },
 };
 
-const FREE_TRIAL_DAYS = 7;
-const FREE_DAILY_LIMIT = 3;
-const GUEST_LIMIT = 3;
+const FREE_TRIAL_DAYS = 3;
+const FREE_DAILY_LIMIT = 5;
+const GUEST_LIMIT = 10;
 
 // ============================================================
 // POST /api/auth/login — Google 登录
@@ -338,7 +339,7 @@ async function handleRemoveBg(request, env) {
     }
 
     // 调用 RemoveBG API
-    const apiKey = env.REMOVEBG_API_KEY;
+    const apiKey = env.REMOVE_BG_API_KEY;
     if (!apiKey) {
       return err("API_ERROR", "服务配置错误", 500);
     }
@@ -347,9 +348,9 @@ async function handleRemoveBg(request, env) {
     const removeBgFormData = new FormData();
     removeBgFormData.append("image_file", imageFile);
 
-    const apiResponse = await fetch("https://removebgapi.com/api/v1/remove", {
+    const apiResponse = await fetch("https://api.poof.bg/v1/remove", {
       method: "POST",
-      headers: { "Authorization": `Bearer ${apiKey}` },
+      headers: { "x-api-key": apiKey },
       body: removeBgFormData,
     });
 
@@ -603,9 +604,9 @@ async function getPaypalAccessToken(env) {
 
 // 按量包配置
 const CREDIT_PACKS = {
-  starter:  { name: "Starter Pack",  price: "1.69", credits: 100 },
-  standard: { name: "Standard Pack", price: "4.69", credits: 300 },
-  pro_pack: { name: "Pro Pack",      price: "9.69", credits: 800 },
+  pro:  { name: "Pro",  price: "1.69", credits: 100 },
+  enterprise300: { name: "Enterprise", price: "4.69", credits: 300 },
+  enterprise800: { name: "Enterprise Plus", price: "9.69", credits: 800 },
 };
 
 // 月订阅配置（需要在 PayPal 后台创建 Plan，这里存 Plan ID）
