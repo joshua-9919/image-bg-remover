@@ -64,7 +64,7 @@ const translations: Record<Locale, Record<string, string>> = {
     // Login
     "login.title": "Image BG Remover",
     "login.subtitle": "Sign in for more features",
-    "login.benefit1": "3 free background removals per day (7-day trial)",
+    "login.benefit1": "Guest 5 free uses, Free 5/day (3-day trial)",
     "login.benefit2": "Save processing history, download anytime",
     "login.benefit3": "Unlock more plans and credits",
     "login.back": "← Back to home, continue using",
@@ -154,7 +154,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "home.quota.exceeded": "额度已用完",
     "login.title": "Image BG Remover",
     "login.subtitle": "登录后享受更多功能",
-    "login.benefit1": "每天 3 次免费去背景（7天试用）",
+    "login.benefit1": "游客免费5次，Free每天5次（3天试用）",
     "login.benefit2": "保存处理历史，随时下载",
     "login.benefit3": "解锁更多套餐和额度",
     "login.back": "← 返回首页，继续免费使用",

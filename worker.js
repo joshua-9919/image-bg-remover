@@ -124,7 +124,7 @@ const PLANS = {
 
 const FREE_TRIAL_DAYS = 3;
 const FREE_DAILY_LIMIT = 5;
-const GUEST_LIMIT = 10;
+const GUEST_LIMIT = 5;
 
 // ============================================================
 // POST /api/auth/login — Google 登录
