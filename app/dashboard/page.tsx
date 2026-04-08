@@ -34,6 +34,18 @@ interface HistoryRecord {
   created_at: number;
 }
 
+interface ApiKeyInfo {
+  id: string;
+  name: string;
+  prefix: string;
+  dailyLimit: number;
+  isActive: boolean;
+  createdAt: number;
+  lastUsedAt: number | null;
+  todayUsed: number;
+  totalUsed: number;
+}
+
 interface UsageData {
   planType: string;
   remaining: number;
@@ -46,6 +58,7 @@ interface UsageData {
   trialExpired?: boolean;
   monthlyQuota?: number;
   usedThisMonth?: number;
+  apiKeys?: ApiKeyInfo[];
 }
 
 export default function DashboardPage() {
@@ -55,7 +68,7 @@ export default function DashboardPage() {
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [historyTotal, setHistoryTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"overview" | "history" | "plans">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "history" | "plans" | "apikeys">("overview");
   const [locale, setLocale] = useState<Locale>("en");
 
   useEffect(() => {
@@ -192,6 +205,7 @@ export default function DashboardPage() {
             { key: "overview", label: t(locale, "dash.tab.overview"), },
             { key: "history", label: t(locale, "dash.tab.history"), },
             { key: "plans", label: t(locale, "dash.tab.plans"), },
+            { key: "apikeys", label: "🔑 API Keys", },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -339,6 +353,11 @@ export default function DashboardPage() {
 
         {/* Plans Tab */}
         {activeTab === "plans" && <PlansSection currentPlan={user.planType} locale={locale} />}
+
+        {/* API Keys Tab */}
+        {activeTab === "apikeys" && (
+          <ApiKeysSection locale={locale} t={t} />
+        )}
       </main>
     </div>
   );
@@ -512,8 +531,8 @@ function PlansSection({ currentPlan, locale }: { currentPlan: string; locale: Lo
         <p className="text-sm text-gray-600 mb-4">Monthly billing, credits reset each month</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[
-            { id: "basic_monthly", name: "Basic", price: "$2.99", credits: "250", per: "$0.012/image", period: "/mo" },
-            { id: "pro_monthly", name: "Pro", price: "$6.99", credits: "700", per: "$0.010/image", period: "/mo", popular: true },
+            { id: "basic_monthly", name: "Basic", price: "$9.99", credits: "1000", per: "$0.010/image", period: "/mo" },
+            { id: "pro_monthly", name: "Pro", price: "$19.99", credits: "2000", per: "$0.010/image", period: "/mo", popular: true },
           ].map((plan) => (
             <div
               key={plan.id}
@@ -561,6 +580,263 @@ function PlansSection({ currentPlan, locale }: { currentPlan: string; locale: Lo
         <p className="text-sm text-blue-700">
           🔒 Payments securely processed by PayPal · Credit packs never expire · Cancel subscription anytime
         </p>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// API Keys Section Component
+// ============================================================
+function ApiKeysSection({ locale, t }: { locale: Locale; t: (locale: Locale, key: string, params?: Record<string, string>) => string }) {
+  const [keys, setKeys] = useState<ApiKeyInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [newlyCreatedKey, setNewlyCreatedKey] = useState<string | null>(null);
+  const [showNewKeyModal, setShowNewKeyModal] = useState(false);
+  const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  useEffect(() => {
+    loadKeys();
+  }, []);
+
+  async function loadKeys() {
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+
+    try {
+      const res = await fetch("/api/key/list", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.success) {
+        setKeys(data.data);
+      }
+    } catch (err) {
+      console.error(t(locale, "apikeys.error.load"), err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCreateKey() {
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+
+    setCreating(true);
+    setMessage(null);
+
+    try {
+      const res = await fetch("/api/key/generate", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: newKeyName || "My API Key" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewlyCreatedKey(data.data.apiKey);
+        setShowNewKeyModal(true);
+        setNewKeyName("");
+        await loadKeys();
+      } else {
+        setMessage({ type: "error", text: data.error?.message || t(locale, "apikeys.error.create") });
+      }
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : t(locale, "apikeys.error.create") });
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function handleDeleteKey(keyId: string) {
+    if (!confirm(t(locale, "apikeys.delete.confirm"))) return;
+
+    const token = localStorage.getItem("auth_token");
+    if (!token) return;
+
+    try {
+      const res = await fetch("/api/key/delete", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ keyId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage({ type: "success", text: t(locale, "apikeys.deleted") });
+        await loadKeys();
+      } else {
+        setMessage({ type: "error", text: data.error?.message || "Failed to delete key" });
+      }
+    } catch (err) {
+      setMessage({ type: "error", text: err instanceof Error ? err.message : "Failed to delete key" });
+    }
+  }
+
+  function copyToClipboard(text: string) {
+    navigator.clipboard.writeText(text).then(() => {
+      setMessage({ type: "success", text: t(locale, "apikeys.copied") });
+    });
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="w-8 h-8 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Message */}
+      {message && (
+        <div className={`rounded-2xl p-4 ${message.type === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+          <p className="font-medium">{message.text}</p>
+        </div>
+      )}
+
+      {/* New Key Modal */}
+      {showNewKeyModal && newlyCreatedKey && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center text-2xl">🔑</div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">API Key Created!</h3>
+                <p className="text-sm text-gray-500">Copy it now — you won't see it again</p>
+              </div>
+            </div>
+            <div className="bg-gray-100 rounded-xl p-4 font-mono text-sm break-all mb-4">
+              {newlyCreatedKey}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => copyToClipboard(newlyCreatedKey)}
+                className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-3 px-4 rounded-xl hover:shadow-lg transition-all"
+              >
+                📋 Copy
+              </button>
+              <button
+                onClick={() => { setShowNewKeyModal(false); setNewlyCreatedKey(null); }}
+                className="flex-1 bg-gray-100 text-gray-700 font-semibold py-3 px-4 rounded-xl hover:bg-gray-200 transition-all"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-100">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-bold text-gray-800">🔑 API Keys</h3>
+            <p className="text-sm text-gray-600">Use API keys to access our API from your applications</p>
+          </div>
+        </div>
+
+        {/* Create New Key */}
+        <div className="flex gap-3 mb-6">
+          <input
+            type="text"
+            value={newKeyName}
+            onChange={(e) => setNewKeyName(e.target.value)}
+            placeholder={t(locale, "apikeys.create.placeholder")}
+            className="flex-1 px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+            onKeyDown={(e) => e.key === "Enter" && handleCreateKey()}
+          />
+          <button
+            onClick={handleCreateKey}
+            disabled={creating}
+            className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-2.5 px-6 rounded-xl hover:shadow-lg transition-all disabled:opacity-50 flex items-center gap-2"
+          >
+            {creating ? (
+              <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Creating...</>
+            ) : (
+              <><span>+</span> Generate Key</>
+            )}
+          </button>
+        </div>
+
+        {/* Free Trial Info */}
+        <div className="bg-blue-50 rounded-xl p-4 mb-6">
+          <p className="text-sm text-blue-700">
+            📌 <strong>Free Trial:</strong> 30 requests/day for 5 days. Subscribe for unlimited API access.
+          </p>
+        </div>
+
+        {/* Keys List */}
+        {keys.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            <div className="text-5xl mb-3">🔑</div>
+            <p>No API keys yet. Generate one above to get started.</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {keys.map((key) => (
+              <div key={key.id} className="bg-gray-50 rounded-xl p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="font-semibold text-gray-800">{key.name}</h4>
+                      {key.isActive ? (
+                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Active</span>
+                      ) : (
+                        <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Inactive</span>
+                      )}
+                    </div>
+                    <p className="font-mono text-sm text-gray-500 mb-2">{key.prefix}••••••••</p>
+                    <div className="flex gap-4 text-xs text-gray-500">
+                      <span>Created: {new Date(key.createdAt).toLocaleDateString()}</span>
+                      {key.lastUsedAt && <span>Last used: {new Date(key.lastUsedAt).toLocaleDateString()}</span>}
+                      <span>Today: {key.todayUsed} requests</span>
+                      <span>Total: {key.totalUsed} requests</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteKey(key.id)}
+                    className="text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg text-sm transition-all"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* API Usage Instructions */}
+      <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-100">
+        <h3 className="text-lg font-bold text-gray-800 mb-4">📡 API Usage</h3>
+        <div className="bg-gray-900 rounded-xl p-4 font-mono text-sm text-gray-100 overflow-x-auto">
+          <p className="text-purple-400 mb-2"># cURL example</p>
+          <p className="text-green-400">curl -X POST https://image-bg-remove.shop/api/remove \</p>
+          <p className="text-green-400">  -H "X-API-Key: sk_ibr_your_key_here" \</p>
+          <p className="text-green-400">  -F "image=@photo.png"</p>
+        </div>
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="font-medium text-gray-700 mb-1">Endpoint</p>
+            <p className="text-gray-500 font-mono text-xs">POST /api/remove</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="font-medium text-gray-700 mb-1">Auth Header</p>
+            <p className="text-gray-500 font-mono text-xs">X-API-Key: sk_ibr_...</p>
+          </div>
+          <div className="bg-gray-50 rounded-lg p-3">
+            <p className="font-medium text-gray-700 mb-1">Max File Size</p>
+            <p className="text-gray-500 font-mono text-xs">5MB (JPG/PNG/WebP)</p>
+          </div>
+        </div>
       </div>
     </div>
   );

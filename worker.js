@@ -78,7 +78,8 @@ async function withCors(promise) {
 // 工具函数
 // ============================================================
 function uuid() {
-  return crypto.randomUUID();
+  // Use globalThis.crypto for compatibility with Workers runtime
+  return globalThis.crypto.randomUUID();
 }
 function now() {
   return Date.now();
