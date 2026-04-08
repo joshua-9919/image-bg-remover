@@ -26,6 +26,16 @@ export default {
     if (url.pathname === "/api/plans" && method === "GET")
       return withCors(handleGetPlans());
 
+    // --- API Key 管理路由 ---
+    if (url.pathname === "/api/key/generate" && method === "POST")
+      return withCors(handleGenerateApiKey(request, env));
+    if (url.pathname === "/api/key/list" && method === "GET")
+      return withCors(handleListApiKeys(request, env));
+    if (url.pathname === "/api/key/delete" && method === "POST")
+      return withCors(handleDeleteApiKey(request, env));
+    if (url.pathname === "/api/key/regenerate" && method === "POST")
+      return withCors(handleRegenerateApiKey(request, env));
+
     // --- PayPal 支付路由 ---
     if (url.pathname === "/api/paypal/create-order" && method === "POST")
       return withCors(handlePaypalCreateOrder(request, env));
@@ -51,7 +61,7 @@ function corsHeaders() {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key",
   };
 }
 function corsResponse() {
@@ -94,19 +104,156 @@ function decodeGoogleJwt(token) {
   }
 }
 
-// 从请求获取当前用户（通过 session token）
+// ============================================================
+// 数据库初始化（启动时自动建表）
+// ============================================================
+async function ensureTables(env) {
+  try {
+    await env.DB.exec(`
+      CREATE TABLE IF NOT EXISTS api_keys (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        key_hash TEXT NOT NULL,
+        key_prefix TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT 'My API Key',
+        daily_limit INTEGER NOT NULL DEFAULT 0,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        last_used_at INTEGER,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )
+    `);
+  } catch {}
+  try {
+    await env.DB.exec(`
+      CREATE TABLE IF NOT EXISTS free_trial_api (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL UNIQUE,
+        start_at INTEGER NOT NULL,
+        end_at INTEGER NOT NULL,
+        daily_limit INTEGER NOT NULL DEFAULT 30,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+      )
+    `);
+  } catch {}
+  try {
+    await env.DB.exec(`ALTER TABLE usage_logs ADD COLUMN api_key_id TEXT`);
+  } catch {}
+  try {
+    await env.DB.exec(`ALTER TABLE usage_logs ADD COLUMN api_key_name TEXT`);
+  } catch {}
+}
+
+// ============================================================
+// API Key 工具函数
+// ============================================================
+const API_KEY_SALT = "image-bg-remover-api-key-salt-v1";
+
+async function hashApiKey(key) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(key + API_KEY_SALT);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function generateRandomKey() {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let result = "sk_ibr_";
+  for (let i = 0; i < 40; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+// 从请求获取当前用户（支持 session token 或 API Key）
 async function getUser(request, env) {
+  // 1. 先尝试 session token
   const auth = request.headers.get("Authorization");
-  if (!auth || !auth.startsWith("Bearer ")) return null;
-  const token = auth.slice(7);
+  if (auth && auth.startsWith("Bearer ")) {
+    const token = auth.slice(7);
+    const sessionData = await env.SESSIONS.get(token);
+    if (sessionData) {
+      const session = JSON.parse(sessionData);
+      const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(session.userId).first();
+      if (user) return { user, authType: "session", apiKeyId: null, apiKeyName: null };
+    }
+  }
+  // 2. 尝试 API Key
+  const apiKey = request.headers.get("X-API-Key");
+  if (apiKey) {
+    const keyHash = await hashApiKey(apiKey);
+    const keyRecord = await env.DB.prepare(
+      "SELECT * FROM api_keys WHERE key_hash = ? AND is_active = 1"
+    ).bind(keyHash).first();
+    if (keyRecord) {
+      const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(keyRecord.user_id).first();
+      if (user) {
+        await env.DB.prepare("UPDATE api_keys SET last_used_at = ? WHERE id = ?")
+          .bind(now(), keyRecord.id).run();
+        return { user, authType: "api_key", apiKeyId: keyRecord.id, apiKeyName: keyRecord.name };
+      }
+    }
+  }
+  // 3. 未登录访客
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  return { user: null, authType: "guest", apiKeyId: null, apiKeyName: null, ip };
+}
 
-  // 从 KV 获取 session
-  const sessionData = await env.SESSIONS.get(token);
-  if (!sessionData) return null;
+// ============================================================
+// 获取用户可用额度
+// ============================================================
+async function getUserQuota(user, env) {
+  const planType = user.plan_type || "free";
+  if (planType === "subscription") {
+    if (now() >= (user.subscription_end || 0)) {
+      return { allowed: false, reason: "subscription_expired", message: "订阅已过期，请续费" };
+    }
+    const today = todayStr();
+    const resetDate = user.month_reset_date;
+    const currentMonth = today.slice(0, 7);
+    if (!resetDate || !resetDate.startsWith(currentMonth)) {
+      await env.DB.prepare("UPDATE users SET used_this_month = 0, month_reset_date = ? WHERE id = ?").bind(today, user.id).run();
+      user.used_this_month = 0;
+    }
+    const remaining = Math.max(0, (user.monthly_quota || 0) - (user.used_this_month || 0));
+    return { allowed: remaining > 0, reason: remaining > 0 ? "subscription" : "quota_exceeded", quotaType: "subscription", remaining, message: remaining > 0 ? `订阅额度剩余 ${remaining} 次` : "本月额度已用完" };
+  }
+  if (planType === "credits") {
+    if ((user.credits || 0) <= 0) return { allowed: false, reason: "quota_exceeded", message: "额度已用完，请购买套餐" };
+    return { allowed: true, reason: "credits", quotaType: "credits", remaining: user.credits, message: `剩余 ${user.credits} 次` };
+  }
+  if (planType === "free") {
+    const trial = await env.DB.prepare("SELECT * FROM free_trial_api WHERE user_id = ?").bind(user.id).first();
+    if (!trial) { const newTrial = await initFreeTrialApi(user.id, env); return await checkFreeTrialQuota(newTrial, env); }
+    return await checkFreeTrialQuota(trial, env);
+  }
+  return { allowed: false, reason: "unknown", message: "未知账户类型" };
+}
 
-  const session = JSON.parse(sessionData);
-  const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(session.userId).first();
-  return user;
+async function checkFreeTrialQuota(trial, env) {
+  const nowMs = now();
+  if (nowMs >= trial.end_at) return { allowed: false, reason: "trial_expired", message: `免费试用已到期（${FREE_TRIAL_API.trialDays} 天），请购买套餐` };
+  const today = todayStr();
+  const todayStart = new Date(today).getTime();
+  const todayEnd = todayStart + 24 * 60 * 60 * 1000;
+  const todayUsage = await env.DB.prepare("SELECT COUNT(*) as cnt FROM usage_logs WHERE user_id = ? AND api_key_id IS NOT NULL AND created_at >= ? AND created_at < ?").bind(trial.user_id, todayStart, todayEnd).first();
+  const used = todayUsage?.cnt || 0;
+  const remaining = Math.max(0, trial.daily_limit - used);
+  const daysLeft = Math.ceil((trial.end_at - nowMs) / (24 * 60 * 60 * 1000));
+  if (remaining <= 0) return { allowed: false, reason: "daily_limit", quotaType: "free_trial", message: `今日免费试用次数已用完（${trial.daily_limit} 次/天），剩余 ${daysLeft} 天试用` };
+  return { allowed: true, reason: "free_trial", quotaType: "free_trial", remaining, dailyLimit: trial.daily_limit, daysLeft, message: `免费试用：今日剩余 ${remaining}/${trial.daily_limit} 次，试用剩余 ${daysLeft} 天` };
+}
+
+async function initFreeTrialApi(userId, env) {
+  await ensureTables(env);
+  const existing = await env.DB.prepare("SELECT * FROM free_trial_api WHERE user_id = ?").bind(userId).first();
+  if (existing) return existing;
+  const timestamp = now();
+  const trialEnd = timestamp + FREE_TRIAL_API.trialDays * 24 * 60 * 60 * 1000;
+  await env.DB.prepare(`INSERT INTO free_trial_api (id, user_id, start_at, end_at, daily_limit, created_at) VALUES (?, ?, ?, ?, ?, ?)`).bind(uuid(), userId, timestamp, trialEnd, FREE_TRIAL_API.dailyLimit, timestamp).run();
+  return { user_id: userId, start_at: timestamp, end_at: trialEnd, daily_limit: FREE_TRIAL_API.dailyLimit };
 }
 
 // ============================================================
@@ -118,13 +265,18 @@ const PLANS = {
   standard: { name: "Standard", type: "credits", price: 4.69, credits: 300 },
   pro_pack: { name: "Pro Pack", type: "credits", price: 9.69, credits: 800 },
   // 月订阅
-  basic_monthly: { name: "Basic",  type: "subscription", price: 2.99, credits: 250 },
-  pro_monthly:   { name: "Pro",    type: "subscription", price: 6.99, credits: 700 },
+  basic_monthly: { name: "Basic",  type: "subscription", price: 9.99, credits: 1000 },
+  pro_monthly:   { name: "Pro",    type: "subscription", price: 19.99, credits: 2000 },
 };
 
+// 免费 API 试用配置
+const FREE_TRIAL_API = {
+  dailyLimit: 30,   // 每天 30 次
+  trialDays: 5,     // 共 5 天
+};
 const FREE_TRIAL_DAYS = 3;
-const FREE_DAILY_LIMIT = 5;
-const GUEST_LIMIT = 5;
+const FREE_DAILY_LIMIT = 3;
+const GUEST_LIMIT = 3;
 
 // ============================================================
 // POST /api/auth/login — Google 登录
@@ -210,7 +362,7 @@ async function handleLogout(request, env) {
 // GET /api/user/profile
 // ============================================================
 async function handleGetProfile(request, env) {
-  const user = await getUser(request, env);
+  const { user } = await getUser(request, env);
   if (!user) return err("UNAUTHORIZED", "请先登录", 401);
   return json({ success: true, data: formatUser(user) });
 }
@@ -219,15 +371,15 @@ async function handleGetProfile(request, env) {
 // GET /api/user/usage — 获取额度信息
 // ============================================================
 async function handleGetUsage(request, env) {
-  const user = await getUser(request, env);
+  const { user } = await getUser(request, env);
   if (!user) return err("UNAUTHORIZED", "请先登录", 401);
 
   const usage = calculateUsage(user);
-  
+
   // 获取今日和本月使用量
   const today = todayStr();
   const monthStart = today.slice(0, 7) + "-01";
-  
+
   const todayCount = await env.DB.prepare(
     "SELECT COUNT(*) as cnt FROM usage_logs WHERE user_id = ? AND date(created_at/1000, 'unixepoch') = ?"
   ).bind(user.id, today).first();
@@ -236,12 +388,26 @@ async function handleGetUsage(request, env) {
     "SELECT COUNT(*) as cnt FROM usage_logs WHERE user_id = ? AND date(created_at/1000, 'unixepoch') >= ?"
   ).bind(user.id, monthStart).first();
 
+  // 获取 API Key 列表和各自用量
+  const apiKeys = await env.DB.prepare(
+    "SELECT id, name, created_at, last_used_at FROM api_keys WHERE user_id = ? AND is_active = 1"
+  ).bind(user.id).all();
+
+  const keyUsages = [];
+  for (const key of (apiKeys.results || [])) {
+    const todayUsage = await env.DB.prepare(
+      "SELECT COUNT(*) as cnt FROM usage_logs WHERE user_id = ? AND api_key_id = ? AND date(created_at/1000, 'unixepoch') = ?"
+    ).bind(user.id, key.id, today).first();
+    keyUsages.push({ id: key.id, name: key.name, createdAt: key.created_at, lastUsedAt: key.last_used_at, todayUsed: todayUsage?.cnt || 0 });
+  }
+
   return json({
     success: true,
     data: {
       ...usage,
       todayUsed: todayCount?.cnt || 0,
       monthUsed: monthCount?.cnt || 0,
+      apiKeys: keyUsages,
     },
   });
 }
@@ -250,7 +416,7 @@ async function handleGetUsage(request, env) {
 // GET /api/user/history — 处理历史
 // ============================================================
 async function handleGetHistory(request, env) {
-  const user = await getUser(request, env);
+  const { user } = await getUser(request, env);
   if (!user) return err("UNAUTHORIZED", "请先登录", 401);
 
   const url = new URL(request.url);
@@ -290,23 +456,121 @@ async function handleGetPlans() {
         { id: "pro_pack", name: "Pro Pack", price: 9.69, credits: 800, perImage: "$0.012", bestValue: true },
       ],
       subscriptions: [
-        { id: "basic_monthly", name: "Basic", price: 2.99, credits: 250, period: "month", perImage: "$0.012" },
-        { id: "pro_monthly", name: "Pro", price: 6.99, credits: 700, period: "month", perImage: "$0.010", popular: true },
+        { id: "basic_monthly", name: "Basic", price: 9.99, credits: 1000, period: "month", perImage: "$0.010" },
+        { id: "pro_monthly", name: "Pro", price: 19.99, credits: 2000, period: "month", perImage: "$0.010", popular: true },
       ],
       free: {
         guestLimit: GUEST_LIMIT,
         dailyLimit: FREE_DAILY_LIMIT,
         trialDays: FREE_TRIAL_DAYS,
       },
+      freeApiTrial: {
+        dailyLimit: FREE_TRIAL_API.dailyLimit,
+        trialDays: FREE_TRIAL_API.trialDays,
+        description: "注册后即可获得 API 免费试用",
+      },
     },
   });
 }
 
 // ============================================================
-// POST /api/remove — 去背景（含额度检查）
+// POST /api/key/generate — 生成 API Key
+// ============================================================
+async function handleGenerateApiKey(request, env) {
+  try {
+    const { user } = await getUser(request, env);
+    if (!user) return err("UNAUTHORIZED", "请先登录", 401);
+    const body = await request.json().catch(() => ({}));
+    const name = body.name || "My API Key";
+    await ensureTables(env);
+    const rawKey = generateRandomKey();
+    const keyHash = await hashApiKey(rawKey);
+    const keyPrefix = rawKey.slice(0, 12) + "...";
+    const keyId = uuid();
+    const timestamp = now();
+    await env.DB.prepare(
+      `INSERT INTO api_keys (id, user_id, key_hash, key_prefix, name, daily_limit, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)`
+    ).bind(keyId, user.id, keyHash, keyPrefix, name, 0, timestamp).run();
+    await initFreeTrialApi(user.id, env);
+    return json({ success: true, data: { id: keyId, name, apiKey: rawKey, prefix: keyPrefix, createdAt: timestamp, message: "请妥善保存 API Key，之后无法查看完整内容" } });
+  } catch (error) {
+    console.error("generate-api-key error:", error.message);
+    return err("KEY_GEN_ERROR", error.message, 500);
+  }
+}
+
+// ============================================================
+// GET /api/key/list — 列出用户的 API Keys
+// ============================================================
+async function handleListApiKeys(request, env) {
+  try {
+    const { user } = await getUser(request, env);
+    if (!user) return err("UNAUTHORIZED", "请先登录", 401);
+    const keys = await env.DB.prepare("SELECT id, name, key_prefix, daily_limit, is_active, created_at, last_used_at FROM api_keys WHERE user_id = ?").bind(user.id).all();
+    const today = todayStr();
+    const result = [];
+    for (const k of (keys.results || [])) {
+      const todayUsage = await env.DB.prepare("SELECT COUNT(*) as cnt FROM usage_logs WHERE user_id = ? AND api_key_id = ? AND date(created_at/1000, 'unixepoch') = ?").bind(user.id, k.id, today).first();
+      const totalUsage = await env.DB.prepare("SELECT COUNT(*) as cnt FROM usage_logs WHERE user_id = ? AND api_key_id = ?").bind(user.id, k.id).first();
+      result.push({ id: k.id, name: k.name, prefix: k.key_prefix, dailyLimit: k.daily_limit, isActive: k.is_active === 1, createdAt: k.created_at, lastUsedAt: k.last_used_at, todayUsed: todayUsage?.cnt || 0, totalUsed: totalUsage?.cnt || 0 });
+    }
+    return json({ success: true, data: result });
+  } catch (error) {
+    console.error("list-api-keys error:", error.message);
+    return err("LIST_ERROR", error.message, 500);
+  }
+}
+
+// ============================================================
+// POST /api/key/delete — 删除 API Key
+// ============================================================
+async function handleDeleteApiKey(request, env) {
+  try {
+    const { user } = await getUser(request, env);
+    if (!user) return err("UNAUTHORIZED", "请先登录", 401);
+    const body = await request.json();
+    const { keyId } = body;
+    if (!keyId) return err("NO_KEY_ID", "缺少 keyId", 400);
+    const key = await env.DB.prepare("SELECT * FROM api_keys WHERE id = ? AND user_id = ?").bind(keyId, user.id).first();
+    if (!key) return err("KEY_NOT_FOUND", "Key 不存在", 404);
+    await env.DB.prepare("UPDATE api_keys SET is_active = 0 WHERE id = ?").bind(keyId).run();
+    return json({ success: true, data: { message: "API Key 已删除" } });
+  } catch (error) {
+    console.error("delete-api-key error:", error.message);
+    return err("DELETE_ERROR", error.message, 500);
+  }
+}
+
+// ============================================================
+// POST /api/key/regenerate — 重新生成 API Key
+// ============================================================
+async function handleRegenerateApiKey(request, env) {
+  try {
+    const { user } = await getUser(request, env);
+    if (!user) return err("UNAUTHORIZED", "请先登录", 401);
+    const body = await request.json();
+    const { keyId } = body;
+    if (!keyId) return err("NO_KEY_ID", "缺少 keyId", 400);
+    const key = await env.DB.prepare("SELECT * FROM api_keys WHERE id = ? AND user_id = ?").bind(keyId, user.id).first();
+    if (!key) return err("KEY_NOT_FOUND", "Key 不存在", 404);
+    const rawKey = generateRandomKey();
+    const keyHash = await hashApiKey(rawKey);
+    const keyPrefix = rawKey.slice(0, 12) + "...";
+    await env.DB.prepare("UPDATE api_keys SET key_hash = ?, key_prefix = ?, last_used_at = NULL WHERE id = ?").bind(keyHash, keyPrefix, keyId).run();
+    return json({ success: true, data: { id: keyId, name: key.name, apiKey: rawKey, prefix: keyPrefix, message: "请妥善保存新的 API Key" } });
+  } catch (error) {
+    console.error("regenerate-api-key error:", error.message);
+    return err("REGEN_ERROR", error.message, 500);
+  }
+}
+
+// ============================================================
+// POST /api/remove — 去背景（支持 API Key 认证）
 // ============================================================
 async function handleRemoveBg(request, env) {
   try {
+    await ensureTables(env);
+
     const formData = await request.formData();
     const imageFile = formData.get("image");
 
@@ -314,18 +578,12 @@ async function handleRemoveBg(request, env) {
       return err("NO_FILE", "请上传图片文件", 400);
     }
 
-    // 获取用户（可能未登录）
-    const user = await getUser(request, env);
+    // 获取用户（session token 或 API Key）
+    const authInfo = await getUser(request, env);
 
-    // 额度检查
-    if (user) {
-      const canUse = await checkAndDeductCredits(user, env);
-      if (!canUse.allowed) {
-        return err("QUOTA_EXCEEDED", canUse.message, 403);
-      }
-    } else {
-      // 未登录：检查 guest 额度（通过 IP）
-      const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+    // 未登录且无 API Key：检查访客额度
+    if (!authInfo.user && authInfo.authType === "guest") {
+      const ip = authInfo.ip;
       const guestKey = `guest:${ip}`;
       const guestData = await env.SESSIONS.get(guestKey);
       const guest = guestData ? JSON.parse(guestData) : { count: 0 };
@@ -336,6 +594,14 @@ async function handleRemoveBg(request, env) {
 
       guest.count++;
       await env.SESSIONS.put(guestKey, JSON.stringify(guest), { expirationTtl: 60 * 60 * 24 * 365 });
+    }
+
+    // 已登录用户：检查额度
+    if (authInfo.user) {
+      const quota = await getUserQuota(authInfo.user, env);
+      if (!quota.allowed) {
+        return err("QUOTA_EXCEEDED", quota.message, 403);
+      }
     }
 
     // 调用 RemoveBG API
@@ -377,16 +643,24 @@ async function handleRemoveBg(request, env) {
       }
     }
 
-    // 记录使用日志
-    if (user) {
+    // 记录使用日志（关联 api_key_id）
+    if (authInfo.user) {
       await env.DB.prepare(
-        "INSERT INTO usage_logs (id, user_id, action, credits_used, created_at) VALUES (?, ?, 'remove_bg', 1, ?)"
-      ).bind(uuid(), user.id, now()).run();
+        "INSERT INTO usage_logs (id, user_id, action, credits_used, created_at, api_key_id, api_key_name) VALUES (?, ?, 'remove_bg', 1, ?, ?, ?)"
+      ).bind(uuid(), authInfo.user.id, now(), authInfo.apiKeyId, authInfo.apiKeyName || null).run();
+
+      // 扣减额度（订阅用户）
+      const planType = authInfo.user.plan_type || "free";
+      if (planType === "subscription") {
+        await env.DB.prepare("UPDATE users SET used_this_month = used_this_month + 1, updated_at = ? WHERE id = ?").bind(now(), authInfo.user.id).run();
+      } else if (planType === "credits") {
+        await env.DB.prepare("UPDATE users SET credits = credits - 1, updated_at = ? WHERE id = ?").bind(now(), authInfo.user.id).run();
+      }
 
       // 记录到 image_history
       await env.DB.prepare(
         "INSERT INTO image_history (id, user_id, file_name, file_size, created_at) VALUES (?, ?, ?, ?, ?)"
-      ).bind(uuid(), user.id, imageFile.name || "image.png", imageFile.size || 0, now()).run();
+      ).bind(uuid(), authInfo.user.id, imageFile.name || "image.png", imageFile.size || 0, now()).run();
     }
 
     return json({
@@ -620,7 +894,7 @@ const SUBSCRIPTION_PLANS = {
 // ============================================================
 async function handlePaypalCreateOrder(request, env) {
   try {
-    const user = await getUser(request, env);
+    const { user } = await getUser(request, env);
     if (!user) return err("UNAUTHORIZED", "请先登录", 401);
 
     const body = await request.json();
@@ -684,7 +958,7 @@ async function handlePaypalCreateOrder(request, env) {
 // ============================================================
 async function handlePaypalCaptureOrder(request, env) {
   try {
-    const user = await getUser(request, env);
+    const { user } = await getUser(request, env);
     if (!user) return err("UNAUTHORIZED", "请先登录", 401);
 
     const body = await request.json();
@@ -749,7 +1023,7 @@ async function handlePaypalCaptureOrder(request, env) {
 // ============================================================
 async function handlePaypalCreateSubscription(request, env) {
   try {
-    const user = await getUser(request, env);
+    const { user } = await getUser(request, env);
     if (!user) return err("UNAUTHORIZED", "请先登录", 401);
 
     const body = await request.json();
@@ -810,7 +1084,7 @@ async function handlePaypalCreateSubscription(request, env) {
 // ============================================================
 async function handlePaypalCancelSubscription(request, env) {
   try {
-    const user = await getUser(request, env);
+    const { user } = await getUser(request, env);
     if (!user) return err("UNAUTHORIZED", "请先登录", 401);
 
     const subId = user.paypal_subscription_id;
