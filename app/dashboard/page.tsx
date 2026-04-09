@@ -576,6 +576,13 @@ function PlansSection({ currentPlan, locale }: { currentPlan: string; locale: Lo
         </div>
       </div>
 
+      {/* Subscription API Note */}
+      <div className="bg-green-50 rounded-2xl p-4 text-center">
+        <p className="text-sm text-green-700">
+          {t(locale, "plans.subs.apiNote")}
+        </p>
+      </div>
+
       <div className="bg-blue-50 rounded-2xl p-4 text-center">
         <p className="text-sm text-blue-700">
           🔒 Payments securely processed by PayPal · Credit packs never expire · Cancel subscription anytime
