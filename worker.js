@@ -886,8 +886,8 @@ const CREDIT_PACKS = {
 
 // 月订阅配置（需要在 PayPal 后台创建 Plan，这里存 Plan ID）
 const SUBSCRIPTION_PLANS = {
-  basic_monthly: { name: "Basic Monthly", price: "2.99", credits: 250 },
-  pro_monthly:   { name: "Pro Monthly",   price: "6.99", credits: 700 },
+  basic_monthly: { name: "Basic", price: "9.99", credits: 1000 },
+  pro_monthly:   { name: "Pro",   price: "19.99", credits: 2000 },
 };
 
 // ============================================================
