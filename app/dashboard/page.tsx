@@ -205,7 +205,7 @@ export default function DashboardPage() {
             { key: "overview", label: t(locale, "dash.tab.overview"), },
             { key: "history", label: t(locale, "dash.tab.history"), },
             { key: "plans", label: t(locale, "dash.tab.plans"), },
-            { key: "apikeys", label: "🔑 API Keys", },
+            { key: "apikeys", label: t(locale, "apikeys.tab"), },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -738,8 +738,8 @@ function ApiKeysSection({ locale, t }: { locale: Locale; t: (locale: Locale, key
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-100">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-lg font-bold text-gray-800">🔑 API Keys</h3>
-            <p className="text-sm text-gray-600">Use API keys to access our API from your applications</p>
+            <h3 className="text-lg font-bold text-gray-800">{t(locale, "apikeys.title")}</h3>
+            <p className="text-sm text-gray-600">{t(locale, "apikeys.desc")}</p>
           </div>
         </div>
 
@@ -759,25 +759,23 @@ function ApiKeysSection({ locale, t }: { locale: Locale; t: (locale: Locale, key
             className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-semibold py-2.5 px-6 rounded-xl hover:shadow-lg transition-all disabled:opacity-50 flex items-center gap-2"
           >
             {creating ? (
-              <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Creating...</>
+              <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> {t(locale, "apikeys.create.loading")}</>
             ) : (
-              <><span>+</span> Generate Key</>
+              <><span>+</span> {t(locale, "apikeys.create.btn")}</>
             )}
           </button>
         </div>
 
         {/* Free Trial Info */}
         <div className="bg-blue-50 rounded-xl p-4 mb-6">
-          <p className="text-sm text-blue-700">
-            📌 <strong>Free Trial:</strong> 30 requests/day for 5 days. Subscribe for unlimited API access.
-          </p>
+          <p className="text-sm text-blue-700">{t(locale, "apikeys.free.trial")}</p>
         </div>
 
         {/* Keys List */}
         {keys.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <div className="text-5xl mb-3">🔑</div>
-            <p>No API keys yet. Generate one above to get started.</p>
+            <p>{t(locale, "apikeys.empty")}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -788,24 +786,24 @@ function ApiKeysSection({ locale, t }: { locale: Locale; t: (locale: Locale, key
                     <div className="flex items-center gap-2 mb-1">
                       <h4 className="font-semibold text-gray-800">{key.name}</h4>
                       {key.isActive ? (
-                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Active</span>
+                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">{t(locale, "apikeys.active")}</span>
                       ) : (
-                        <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Inactive</span>
+                        <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">{t(locale, "apikeys.inactive")}</span>
                       )}
                     </div>
                     <p className="font-mono text-sm text-gray-500 mb-2">{key.prefix}••••••••</p>
                     <div className="flex gap-4 text-xs text-gray-500">
-                      <span>Created: {new Date(key.createdAt).toLocaleDateString()}</span>
-                      {key.lastUsedAt && <span>Last used: {new Date(key.lastUsedAt).toLocaleDateString()}</span>}
-                      <span>Today: {key.todayUsed} requests</span>
-                      <span>Total: {key.totalUsed} requests</span>
+                      <span>{t(locale, "apikeys.created")}: {new Date(key.createdAt).toLocaleDateString()}</span>
+                      {key.lastUsedAt && <span>{t(locale, "apikeys.lastused")}: {new Date(key.lastUsedAt).toLocaleDateString()}</span>}
+                      <span>{t(locale, "apikeys.today")}: {key.todayUsed}</span>
+                      <span>{t(locale, "apikeys.total")}: {key.totalUsed}</span>
                     </div>
                   </div>
                   <button
                     onClick={() => handleDeleteKey(key.id)}
                     className="text-red-500 hover:bg-red-50 px-3 py-1.5 rounded-lg text-sm transition-all"
                   >
-                    Delete
+                    {t(locale, "apikeys.delete")}
                   </button>
                 </div>
               </div>
@@ -816,7 +814,7 @@ function ApiKeysSection({ locale, t }: { locale: Locale; t: (locale: Locale, key
 
       {/* API Usage Instructions */}
       <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-100">
-        <h3 className="text-lg font-bold text-gray-800 mb-4">📡 API Usage</h3>
+        <h3 className="text-lg font-bold text-gray-800 mb-4">{t(locale, "apikeys.usage.title")}</h3>
         <div className="bg-gray-900 rounded-xl p-4 font-mono text-sm text-gray-100 overflow-x-auto">
           <p className="text-purple-400 mb-2"># cURL example</p>
           <p className="text-green-400">curl -X POST https://image-bg-remove.shop/api/remove \</p>
