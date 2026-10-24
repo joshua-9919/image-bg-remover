@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import CookieConsent from "../components/CookieConsent";
 import "./globals.css";
 
 const GA_MEASUREMENT_ID = "G-D659NXZZB3";
@@ -57,21 +58,35 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        <Script
-          src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-          strategy="afterInteractive"
-        />
         <Script id="google-analytics" strategy="afterInteractive">
           {`
             window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
+            gtag('consent', 'default', {
+              ad_storage: 'denied',
+              ad_user_data: 'denied',
+              ad_personalization: 'denied',
+              analytics_storage: 'denied',
+              wait_for_update: 500
+            });
+            gtag('set', 'ads_data_redaction', true);
+            try {
+              if (localStorage.getItem('ibr_cookie_consent') === 'granted') {
+                gtag('consent', 'update', { analytics_storage: 'granted' });
+              }
+            } catch (e) {}
             gtag('js', new Date());
             gtag('config', '${GA_MEASUREMENT_ID}');
           `}
         </Script>
+        <Script
+          src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+          strategy="afterInteractive"
+        />
       </head>
       <body className="font-sans antialiased">
         {children}
+        <CookieConsent />
       </body>
     </html>
   );

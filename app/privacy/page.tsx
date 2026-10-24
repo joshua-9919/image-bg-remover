@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import CookieSettingsButton from "../../components/CookieSettingsButton";
 import { ContentSection, PageHero, SiteShell } from "../../components/SiteShell";
 
 export const metadata: Metadata = {
@@ -19,6 +20,8 @@ export default function PrivacyPage() {
         <p>If you sign in with Google, we store your Google account ID, email address, display name, avatar URL, plan type, credits, usage counts, and session token. Sessions are stored for up to 30 days unless you sign out earlier.</p>
         <h2 className="text-2xl font-bold text-gray-900">Third-party services</h2>
         <p>We use Google Sign-In for authentication, Google Analytics for aggregate product analytics, PayPal for payments, Cloudflare Workers, KV, D1, and assets for hosting and storage, and a background-removal API provider to process uploads.</p>
+        <h2 className="text-2xl font-bold text-gray-900">Cookies</h2>
+        <p>Google Analytics runs in Consent Mode v2. Until you click Accept on the cookie banner, no analytics cookies are set; Google may still receive cookieless pings that include standard request data such as IP address, browser user agent, page URL, and referrer. Analytics cookies (_ga, _ga_*) are set only after you accept. We also keep strictly necessary items in your browser&apos;s local storage (sign-in session, account info, language, and your cookie choice). You can change your choice at any time: <CookieSettingsButton />. Declining removes existing analytics cookies.</p>
         <h2 className="text-2xl font-bold text-gray-900">Payments and API keys</h2>
         <p>Payment details are handled by PayPal. We store order status, purchased plan, credits added, PayPal identifiers, and subscription status. API keys are stored as hashes; the full key is shown only once when it is created.</p>
         <h2 className="text-2xl font-bold text-gray-900">Retention</h2>
