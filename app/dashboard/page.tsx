@@ -154,7 +154,7 @@ export default function DashboardPage() {
         <div className="max-w-6xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <a href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-              <span className="text-3xl">🎨</span>
+              <img src="/favicon.svg" alt="" width={40} height={40} className="h-10 w-10" />
               <div>
                 <h1 className="text-xl font-bold text-gray-800">{t(locale, "app.name")}</h1>
                 <p className="text-sm text-gray-600">{t(locale, "nav.dashboard")}</p>
@@ -477,9 +477,9 @@ function PlansSection({ currentPlan, locale }: { currentPlan: string; locale: Lo
         <p className="text-sm text-gray-600 mb-4">Never expire, buy more when you run out</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
-            { id: "pro", name: "Pro", price: "$1.69", credits: "100", per: "$0.017/image" },
-            { id: "enterprise300", name: "Enterprise", price: "$4.69", credits: "300", per: "$0.016/image", popular: true },
-            { id: "enterprise800", name: "Enterprise Plus", price: "$9.69", credits: "800", per: "$0.012/image", best: true },
+            { id: "starter", name: "Starter", price: "$1.69", credits: "100", per: "$0.017/image" },
+            { id: "standard", name: "Standard", price: "$4.69", credits: "300", per: "$0.016/image", popular: true },
+            { id: "pro_pack", name: "Pro Pack", price: "$9.69", credits: "800", per: "$0.012/image", best: true },
           ].map((plan) => (
             <div
               key={plan.id}

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Image BG Remover</title>
+  <desc id="desc">Preview image for Image BG Remover</desc>
+  <rect width="1200" height="630" fill="#fafafa"/>
+  <rect x="70" y="70" width="1060" height="490" rx="28" fill="#ffffff" stroke="#e5e7eb" stroke-width="2"/>
+  <rect x="120" y="150" width="360" height="330" rx="18" fill="#f3f4f6"/>
+  <path d="M120 150h360v330H120z" fill="url(#grid)"/>
+  <circle cx="300" cy="315" r="105" fill="#9333ea" opacity="0.16"/>
+  <path d="M250 380l42-132 42 132h-33l-7-27h-46l-7 27h-31zm5-54h32l-16-59-16 59z" fill="#7e22ce"/>
+  <text x="540" y="240" font-family="Inter, Arial, sans-serif" font-size="64" font-weight="800" fill="#111827">Image BG Remover</text>
+  <text x="540" y="310" font-family="Inter, Arial, sans-serif" font-size="34" font-weight="500" fill="#4b5563">Remove backgrounds in seconds</text>
+  <text x="540" y="365" font-family="Inter, Arial, sans-serif" font-size="26" fill="#6b7280">Transparent PNG output for product photos, ecommerce, and APIs.</text>
+  <rect x="540" y="410" width="268" height="58" rx="14" fill="#9333ea"/>
+  <text x="574" y="448" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff">Try 3 free removals</text>
+  <defs>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse">
+      <rect width="16" height="16" fill="#e5e7eb"/>
+      <rect x="16" y="16" width="16" height="16" fill="#e5e7eb"/>
+      <rect x="16" width="16" height="16" fill="#f9fafb"/>
+      <rect y="16" width="16" height="16" fill="#f9fafb"/>
+    </pattern>
+  </defs>
+</svg>

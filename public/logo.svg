@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="280" height="64" viewBox="0 0 280 64" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">Image BG Remover logo</title>
+  <desc id="desc">A gradient cutout mark with the Image BG Remover wordmark.</desc>
+  <defs>
+    <linearGradient id="logoBg" x1="8" y1="7" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#635BFF"/>
+      <stop offset="0.55" stop-color="#13B8C8"/>
+      <stop offset="1" stop-color="#35D399"/>
+    </linearGradient>
+    <pattern id="logoGrid" width="8" height="8" patternUnits="userSpaceOnUse">
+      <rect width="4" height="4" fill="#F8FAFC"/>
+      <rect x="4" y="4" width="4" height="4" fill="#F8FAFC"/>
+      <rect x="4" width="4" height="4" fill="#E5E7EB"/>
+      <rect y="4" width="4" height="4" fill="#E5E7EB"/>
+    </pattern>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="17" fill="url(#logoBg)"/>
+  <path d="M34 4h9c9.4 0 17 7.6 17 17v22c0 9.4-7.6 17-17 17H21c-3.4 0-6.6-1-9.2-2.8L34 4Z" fill="url(#logoGrid)" opacity="0.96"/>
+  <text x="10" y="43" font-family="Inter, Arial, sans-serif" font-size="29" font-weight="900" letter-spacing="-2" fill="#fff" stroke="#111827" stroke-width="1.8" paint-order="stroke fill">BG</text>
+  <path d="M47 10l1.8 4.2 4.2 1.8-4.2 1.8L47 22l-1.8-4.2L41 16l4.2-1.8L47 10Z" fill="#fff"/>
+  <text x="76" y="30" fill="#111827" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="23" font-weight="800" letter-spacing="0">Image BG</text>
+  <text x="76" y="51" fill="#4B5563" font-family="Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="19" font-weight="650" letter-spacing="0">Remover</text>
+</svg>

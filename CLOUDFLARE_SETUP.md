@@ -44,7 +44,7 @@ Root directory: (留空)
 
 | 变量名 | 值 | 环境 |
 |--------|-----|------|
-| `REMOVE_BG_API_KEY` | `PcjUokjmmGsEkmTfwwDSMqNh` | Production & Preview |
+| `REMOVE_BG_API_KEY` | `[REDACTED_REMOVE_BG_API_KEY]` | Production & Preview |
 
 ### 步骤 6：保存并部署
 
@@ -107,7 +107,7 @@ chmod +x deploy-to-cloudflare.sh
 1. **Settings** → **Environment variables**
 2. 添加：
    - 变量名：`REMOVE_BG_API_KEY`
-   - 值：`PcjUokjmmGsEkmTfwwDSMqNh`
+   - 值：`[REDACTED_REMOVE_BG_API_KEY]`
 3. 点击 **Save**
 
 ---

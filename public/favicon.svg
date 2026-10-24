@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Image BG Remover">
+  <defs>
+    <linearGradient id="bg" x1="8" y1="7" x2="58" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#635BFF"/>
+      <stop offset="0.55" stop-color="#13B8C8"/>
+      <stop offset="1" stop-color="#35D399"/>
+    </linearGradient>
+    <pattern id="grid" width="8" height="8" patternUnits="userSpaceOnUse">
+      <rect width="4" height="4" fill="#F8FAFC"/>
+      <rect x="4" y="4" width="4" height="4" fill="#F8FAFC"/>
+      <rect x="4" width="4" height="4" fill="#E5E7EB"/>
+      <rect y="4" width="4" height="4" fill="#E5E7EB"/>
+    </pattern>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="17" fill="url(#bg)"/>
+  <path d="M34 4h9c9.4 0 17 7.6 17 17v22c0 9.4-7.6 17-17 17H21c-3.4 0-6.6-1-9.2-2.8L34 4Z" fill="url(#grid)" opacity="0.92"/>
+  <text x="10" y="43" font-family="Inter, Arial, sans-serif" font-size="29" font-weight="900" letter-spacing="-2" fill="#fff" stroke="#111827" stroke-width="1.8" paint-order="stroke fill">BG</text>
+  <path d="M48 10l1.8 4.2 4.2 1.8-4.2 1.8L48 22l-1.8-4.2L42 16l4.2-1.8L48 10Z" fill="#fff"/>
+</svg>

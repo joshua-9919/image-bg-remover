@@ -36,7 +36,7 @@ Root directory: (留空)
 
 | 变量名 | 值 |
 |--------|-----|
-| `REMOVE_BG_API_KEY` | `PcjUokjmmGsEkmTfwwDSMqNh` |
+| `REMOVE_BG_API_KEY` | `[REDACTED_REMOVE_BG_API_KEY]` |
 
 ### 4. 保存并部署
 
@@ -54,7 +54,7 @@ compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
-REMOVE_BG_API_KEY = "PcjUokjmmGsEkmTfwwDSMqNh"
+REMOVE_BG_API_KEY = "[REDACTED_REMOVE_BG_API_KEY]"
 
 [[pages_build_config]]
 build_command = "npm run build"

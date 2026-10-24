@@ -7,8 +7,25 @@ export default {
     const url = new URL(request.url);
     const method = request.method;
 
+    const httpsRedirect = redirectToHttps(request);
+    if (httpsRedirect) return httpsRedirect;
+
     // CORS
     if (method === "OPTIONS") return corsResponse();
+
+    // Google Search Console HTML-file verification must be served at the exact
+    // .html path without framework redirects.
+    if (url.pathname === "/googlec70e1e5ca44375e6.html" && method === "GET") {
+      return withSecurityHeaders(
+        new Response("google-site-verification: googlec70e1e5ca44375e6.html", {
+          status: 200,
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "public, max-age=3600",
+          },
+        }),
+      );
+    }
 
     // --- API 路由 ---
     if (url.pathname === "/api/auth/login" && method === "POST")
@@ -48,30 +65,78 @@ export default {
     if (url.pathname === "/api/paypal/webhook" && method === "POST")
       return withCors(handlePaypalWebhook(request, env));
 
-    // 静态文件请求应该由 Cloudflare 自动处理，不会到达这里
-    // 如果到达这里，返回 404
-    return new Response("Not Found", { status: 404 });
+    if (env.ASSETS) {
+      return withSecurityHeaders(await fetchAssetWithHtmlFallback(request, env));
+    }
+
+    return withSecurityHeaders(new Response("Not Found", { status: 404 }));
   },
 };
 
 // ============================================================
-// CORS
+// HTTP, CORS, security headers
 // ============================================================
+const SITE_ORIGIN = "https://image-bg-remove.shop";
+
+function redirectToHttps(request) {
+  const url = new URL(request.url);
+  if (url.protocol !== "http:") return null;
+  url.protocol = "https:";
+  return new Response(null, {
+    status: 308,
+    headers: {
+      Location: url.toString(),
+      ...securityHeaders(),
+    },
+  });
+}
+
 function corsHeaders() {
   return {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": SITE_ORIGIN,
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key",
+    "Vary": "Origin",
   };
 }
 function corsResponse() {
-  return new Response(null, { status: 204, headers: corsHeaders() });
+  return withSecurityHeaders(new Response(null, { status: 204, headers: corsHeaders() }));
 }
 async function withCors(promise) {
   const res = await promise;
   const headers = new Headers(res.headers);
   Object.entries(corsHeaders()).forEach(([k, v]) => headers.set(k, v));
-  return new Response(res.body, { status: res.status, headers });
+  return withSecurityHeaders(new Response(res.body, { status: res.status, headers }));
+}
+
+function securityHeaders() {
+  return {
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  };
+}
+
+function withSecurityHeaders(response) {
+  const headers = new Headers(response.headers);
+  Object.entries(securityHeaders()).forEach(([k, v]) => headers.set(k, v));
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+async function fetchAssetWithHtmlFallback(request, env) {
+  const response = await env.ASSETS.fetch(request);
+  if (response.status !== 404) return response;
+
+  const url = new URL(request.url);
+  if (request.method !== "GET" && request.method !== "HEAD") return response;
+  if (url.pathname === "/" || url.pathname.includes(".")) return response;
+
+  const htmlUrl = new URL(request.url);
+  htmlUrl.pathname = `${url.pathname}.html`;
+  const htmlResponse = await env.ASSETS.fetch(new Request(htmlUrl.toString(), request));
+  return htmlResponse.status === 404 ? response : htmlResponse;
 }
 
 // ============================================================
@@ -94,7 +159,7 @@ function err(code, message, status = 400) {
   return json({ success: false, error: { code, message } }, status);
 }
 
-// 解码 Google JWT（不验证签名，前端已验证）
+// 解码 Google JWT（仅作为兜底解析，不作为认证依据）
 function decodeGoogleJwt(token) {
   try {
     const parts = token.split(".");
@@ -103,6 +168,21 @@ function decodeGoogleJwt(token) {
   } catch {
     return null;
   }
+}
+
+async function verifyGoogleJwt(token, env) {
+  const googleClientId = env.GOOGLE_CLIENT_ID || "923683353586-gd8aoemj92jc3t6cbs44da8iqnipvc70.apps.googleusercontent.com";
+  const verifyUrl = new URL("https://oauth2.googleapis.com/tokeninfo");
+  verifyUrl.searchParams.set("id_token", token);
+
+  const res = await fetch(verifyUrl.toString(), { method: "GET" });
+  if (!res.ok) return null;
+
+  const payload = await res.json();
+  if (payload.aud !== googleClientId) return null;
+  if (!payload.sub || !payload.email) return null;
+
+  return payload;
 }
 
 // ============================================================
@@ -257,6 +337,100 @@ async function initFreeTrialApi(userId, env) {
   return { user_id: userId, start_at: timestamp, end_at: trialEnd, daily_limit: FREE_TRIAL_API.dailyLimit };
 }
 
+async function checkWebSessionQuota(user, env) {
+  const today = todayStr();
+  const planType = user.plan_type || "free";
+
+  if (planType === "free") {
+    if (!user.free_trial_start) {
+      return { allowed: false, reason: "trial_not_started", message: "请先注册开始免费试用" };
+    }
+
+    const trialEnd = user.free_trial_start + FREE_TRIAL_DAYS * 24 * 60 * 60 * 1000;
+    if (now() >= trialEnd) {
+      return { allowed: false, reason: "trial_expired", message: "免费试用已到期，请购买套餐继续使用" };
+    }
+
+    const dailyUsed = user.free_daily_date === today ? (user.free_daily_used || 0) : 0;
+    const remaining = Math.max(0, FREE_DAILY_LIMIT - dailyUsed);
+    if (remaining <= 0) {
+      return { allowed: false, reason: "daily_limit", quotaType: "free", message: "今日免费次数已用完，明天再来或购买套餐" };
+    }
+
+    return { allowed: true, reason: "free", quotaType: "free", remaining, message: `免费试用：今日剩余 ${remaining}/${FREE_DAILY_LIMIT} 张` };
+  }
+
+  if (planType === "credits") {
+    if ((user.credits || 0) <= 0) return { allowed: false, reason: "quota_exceeded", message: "额度已用完，请购买套餐" };
+    return { allowed: true, reason: "credits", quotaType: "credits", remaining: user.credits, message: `剩余 ${user.credits} 次` };
+  }
+
+  if (planType === "subscription") {
+    if (now() >= (user.subscription_end || 0)) {
+      return { allowed: false, reason: "subscription_expired", message: "订阅已过期，请续费" };
+    }
+
+    const resetDate = user.month_reset_date;
+    const currentMonth = today.slice(0, 7);
+    if (!resetDate || !resetDate.startsWith(currentMonth)) {
+      await env.DB.prepare("UPDATE users SET used_this_month = 0, month_reset_date = ? WHERE id = ?").bind(today, user.id).run();
+      user.used_this_month = 0;
+    }
+
+    const remaining = Math.max(0, (user.monthly_quota || 0) - (user.used_this_month || 0));
+    if (remaining <= 0) {
+      return { allowed: false, reason: "quota_exceeded", quotaType: "subscription", message: "本月额度已用完" };
+    }
+
+    return { allowed: true, reason: "subscription", quotaType: "subscription", remaining, message: `订阅额度剩余 ${remaining} 次` };
+  }
+
+  return { allowed: false, reason: "unknown", message: "未知账户类型" };
+}
+
+async function incrementWebSessionUsage(user, env) {
+  const today = todayStr();
+  const planType = user.plan_type || "free";
+
+  if (planType === "free") {
+    const dailyUsed = user.free_daily_date === today ? (user.free_daily_used || 0) : 0;
+    await env.DB.prepare(
+      "UPDATE users SET free_daily_used = ?, free_daily_date = ?, updated_at = ? WHERE id = ?"
+    ).bind(dailyUsed + 1, today, now(), user.id).run();
+    return;
+  }
+
+  if (planType === "credits") {
+    await env.DB.prepare("UPDATE users SET credits = credits - 1, updated_at = ? WHERE id = ?").bind(now(), user.id).run();
+    return;
+  }
+
+  if (planType === "subscription") {
+    await env.DB.prepare("UPDATE users SET used_this_month = used_this_month + 1, updated_at = ? WHERE id = ?").bind(now(), user.id).run();
+  }
+}
+
+async function syncFreeWebDailyUsage(user, env) {
+  if (!user || (user.plan_type || "free") !== "free") return user;
+
+  const today = todayStr();
+  const storedUsed = user.free_daily_date === today ? (user.free_daily_used || 0) : 0;
+  const todayUsage = await env.DB.prepare(
+    "SELECT COUNT(*) as cnt FROM usage_logs WHERE user_id = ? AND api_key_id IS NULL AND date(created_at/1000, 'unixepoch') = ?"
+  ).bind(user.id, today).first();
+  const loggedUsed = todayUsage?.cnt || 0;
+  const dailyUsed = Math.max(storedUsed, loggedUsed);
+
+  if (user.free_daily_date !== today || dailyUsed !== storedUsed) {
+    await env.DB.prepare(
+      "UPDATE users SET free_daily_used = ?, free_daily_date = ?, updated_at = ? WHERE id = ?"
+    ).bind(dailyUsed, today, now(), user.id).run();
+    return { ...user, free_daily_used: dailyUsed, free_daily_date: today };
+  }
+
+  return user;
+}
+
 // ============================================================
 // 定价方案
 // ============================================================
@@ -288,7 +462,7 @@ async function handleLogin(request, env) {
     const { credential } = body;
     if (!credential) return err("NO_CREDENTIAL", "缺少 Google credential");
 
-    const payload = decodeGoogleJwt(credential);
+    const payload = await verifyGoogleJwt(credential, env);
     if (!payload || !payload.sub || !payload.email) {
       return err("INVALID_TOKEN", "无效的 Google token");
     }
@@ -335,6 +509,8 @@ async function handleLogin(request, env) {
     const sessionData = { userId: user.id, email: user.email, createdAt: timestamp };
     await env.SESSIONS.put(sessionToken, JSON.stringify(sessionData), { expirationTtl: 60 * 60 * 24 * 30 }); // 30天
 
+    user = await syncFreeWebDailyUsage(user, env);
+
     return json({
       success: true,
       data: {
@@ -363,8 +539,9 @@ async function handleLogout(request, env) {
 // GET /api/user/profile
 // ============================================================
 async function handleGetProfile(request, env) {
-  const { user } = await getUser(request, env);
+  let { user } = await getUser(request, env);
   if (!user) return err("UNAUTHORIZED", "请先登录", 401);
+  user = await syncFreeWebDailyUsage(user, env);
   return json({ success: true, data: formatUser(user) });
 }
 
@@ -372,8 +549,9 @@ async function handleGetProfile(request, env) {
 // GET /api/user/usage — 获取额度信息
 // ============================================================
 async function handleGetUsage(request, env) {
-  const { user } = await getUser(request, env);
+  let { user } = await getUser(request, env);
   if (!user) return err("UNAUTHORIZED", "请先登录", 401);
+  user = await syncFreeWebDailyUsage(user, env);
 
   const usage = calculateUsage(user);
 
@@ -597,9 +775,11 @@ async function handleRemoveBg(request, env) {
       await env.SESSIONS.put(guestKey, JSON.stringify(guest), { expirationTtl: 60 * 60 * 24 * 365 });
     }
 
-    // 已登录用户：检查额度
+    // 已登录用户：检查额度。API Key 用户使用 API 试用规则，网页登录用户使用 dashboard 同源配额。
     if (authInfo.user) {
-      const quota = await getUserQuota(authInfo.user, env);
+      const quota = authInfo.authType === "api_key"
+        ? await getUserQuota(authInfo.user, env)
+        : await checkWebSessionQuota(authInfo.user, env);
       if (!quota.allowed) {
         return err("QUOTA_EXCEEDED", quota.message, 403);
       }
@@ -650,12 +830,16 @@ async function handleRemoveBg(request, env) {
         "INSERT INTO usage_logs (id, user_id, action, credits_used, created_at, api_key_id, api_key_name) VALUES (?, ?, 'remove_bg', 1, ?, ?, ?)"
       ).bind(uuid(), authInfo.user.id, now(), authInfo.apiKeyId, authInfo.apiKeyName || null).run();
 
-      // 扣减额度（订阅用户）
+      // 成功处理后再扣减额度，避免外部 API 失败时消耗用户次数。
       const planType = authInfo.user.plan_type || "free";
-      if (planType === "subscription") {
-        await env.DB.prepare("UPDATE users SET used_this_month = used_this_month + 1, updated_at = ? WHERE id = ?").bind(now(), authInfo.user.id).run();
-      } else if (planType === "credits") {
-        await env.DB.prepare("UPDATE users SET credits = credits - 1, updated_at = ? WHERE id = ?").bind(now(), authInfo.user.id).run();
+      if (authInfo.authType === "api_key") {
+        if (planType === "subscription") {
+          await env.DB.prepare("UPDATE users SET used_this_month = used_this_month + 1, updated_at = ? WHERE id = ?").bind(now(), authInfo.user.id).run();
+        } else if (planType === "credits") {
+          await env.DB.prepare("UPDATE users SET credits = credits - 1, updated_at = ? WHERE id = ?").bind(now(), authInfo.user.id).run();
+        }
+      } else {
+        await incrementWebSessionUsage(authInfo.user, env);
       }
 
       // 记录到 image_history
@@ -879,9 +1063,9 @@ async function getPaypalAccessToken(env) {
 
 // 按量包配置
 const CREDIT_PACKS = {
-  pro:  { name: "Pro",  price: "1.69", credits: 100 },
-  enterprise300: { name: "Enterprise", price: "4.69", credits: 300 },
-  enterprise800: { name: "Enterprise Plus", price: "9.69", credits: 800 },
+  starter:  { name: "Starter",  price: "1.69", credits: 100 },
+  standard: { name: "Standard", price: "4.69", credits: 300 },
+  pro_pack: { name: "Pro Pack", price: "9.69", credits: 800 },
 };
 
 // 月订阅配置（需要在 PayPal 后台创建 Plan，这里存 Plan ID）
@@ -1120,7 +1304,13 @@ async function handlePaypalCancelSubscription(request, env) {
 // ============================================================
 async function handlePaypalWebhook(request, env) {
   try {
-    const body = await request.json();
+    const bodyText = await request.text();
+    const body = JSON.parse(bodyText);
+    const verified = await verifyPaypalWebhook(request, env, body);
+    if (!verified) {
+      return err("WEBHOOK_VERIFICATION_FAILED", "PayPal webhook verification failed", 400);
+    }
+
     const eventType = body.event_type;
     const resource = body.resource;
 
@@ -1189,4 +1379,37 @@ async function handlePaypalWebhook(request, env) {
     console.error("webhook error:", error.message);
     return json({ success: true }); // 必须返回 200，否则 PayPal 会重试
   }
+}
+
+async function verifyPaypalWebhook(request, env, body) {
+  if (!env.PAYPAL_WEBHOOK_ID) return false;
+
+  const accessToken = await getPaypalAccessToken(env);
+  const baseUrl = getPaypalUrl(env);
+  const verificationBody = {
+    auth_algo: request.headers.get("paypal-auth-algo"),
+    cert_url: request.headers.get("paypal-cert-url"),
+    transmission_id: request.headers.get("paypal-transmission-id"),
+    transmission_sig: request.headers.get("paypal-transmission-sig"),
+    transmission_time: request.headers.get("paypal-transmission-time"),
+    webhook_id: env.PAYPAL_WEBHOOK_ID,
+    webhook_event: body,
+  };
+
+  if (!verificationBody.auth_algo || !verificationBody.cert_url || !verificationBody.transmission_id || !verificationBody.transmission_sig || !verificationBody.transmission_time) {
+    return false;
+  }
+
+  const res = await fetch(`${baseUrl}/v1/notifications/verify-webhook-signature`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(verificationBody),
+  });
+
+  if (!res.ok) return false;
+  const data = await res.json();
+  return data.verification_status === "SUCCESS";
 }
