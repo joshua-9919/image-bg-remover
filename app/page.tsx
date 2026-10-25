@@ -531,6 +531,13 @@ export default function Home() {
             <a href="/terms" className="hover:text-purple-700">{t(locale, 'nav.terms')}</a>
             <a href="/refund" className="hover:text-purple-700">{t(locale, 'nav.refund')}</a>
           </div>
+          <div className="mb-4 flex flex-wrap items-center justify-center gap-3" aria-label="Featured on">
+            {/* Twelve.tools: free listing requires this dofollow backlink on homepage/footer (no nofollow) */}
+            <a href="https://twelve.tools" target="_blank" rel="noopener">
+              <img src="/badges/twelve-tools-light.svg" alt="Featured on Twelve Tools" width={200} height={54} loading="lazy" />
+            </a>
+            {/* TODO(badges): AIToolnet ("Get Embed code" on listing page), Uneed, NavTools.ai, Future Tools: add after listings are approved */}
+          </div>
           <p>{t(locale, 'home.footer')}</p>
         </div>
       </footer>
