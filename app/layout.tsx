@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import CookieConsent from "../components/CookieConsent";
 import "./globals.css";
 
@@ -55,36 +54,43 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // One inline script, not next/script and not a bare <script src>.
+  // next/script afterInteractive in a manual <head> only emitted a preload, so
+  // GA4 never received hits. A bare <script src> is hoisted into <head> and can
+  // run before the Consent Mode default. Injecting gtag.js after the default is
+  // set keeps the required order in the static HTML.
   return (
     <html lang="en">
-      <head>
-        <Script id="google-analytics" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('consent', 'default', {
-              ad_storage: 'denied',
-              ad_user_data: 'denied',
-              ad_personalization: 'denied',
-              analytics_storage: 'denied',
-              wait_for_update: 500
-            });
-            gtag('set', 'ads_data_redaction', true);
-            try {
-              if (localStorage.getItem('ibr_cookie_consent') === 'granted') {
-                gtag('consent', 'update', { analytics_storage: 'granted' });
-              }
-            } catch (e) {}
-            gtag('js', new Date());
-            gtag('config', '${GA_MEASUREMENT_ID}');
-          `}
-        </Script>
-        <Script
-          src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
-          strategy="afterInteractive"
-        />
-      </head>
       <body className="font-sans antialiased">
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('consent', 'default', {
+  ad_storage: 'denied',
+  ad_user_data: 'denied',
+  ad_personalization: 'denied',
+  analytics_storage: 'denied',
+  wait_for_update: 500
+});
+gtag('set', 'ads_data_redaction', true);
+try {
+  if (localStorage.getItem('ibr_cookie_consent') === 'granted') {
+    gtag('consent', 'update', { analytics_storage: 'granted' });
+  }
+} catch (e) {}
+gtag('js', new Date());
+gtag('config', '${GA_MEASUREMENT_ID}');
+(function(){
+  var s = document.createElement('script');
+  s.async = true;
+  s.src = 'https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}';
+  document.head.appendChild(s);
+})();
+            `.trim(),
+          }}
+        />
         {children}
         <CookieConsent />
       </body>
